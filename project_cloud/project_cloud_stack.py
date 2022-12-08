@@ -1,26 +1,23 @@
 from constructs import Construct
 from aws_cdk import (
-    Duration,
+    aws_ec2 as ec2,
     Stack,
-    aws_iam as iam,
-    aws_sqs as sqs,
-    aws_sns as sns,
-    aws_sns_subscriptions as subs,
 )
-
 
 class ProjectCloudStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        queue = sqs.Queue(
-            self, "ProjectCloudQueue",
-            visibility_timeout=Duration.seconds(300),
-        )
-
-        topic = sns.Topic(
-            self, "ProjectCloudTopic"
-        )
-
-        topic.add_subscription(subs.SqsSubscription(queue))
+        vpc_webserver = ec2.Vpc(
+            self, "VPC_1",
+            ip_addresses=ec2.IpAddresses.cidr("10.10.10.0/24"),
+            max_azs=2,
+            nat_gateways=0,
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    name="public", 
+                    cidr_mask=26, 
+                    subnet_type=ec2.SubnetType.PUBLIC),
+                ]
+        )   
