@@ -1,6 +1,7 @@
 from constructs import Construct
 from aws_cdk import (
     aws_ec2 as ec2,
+    aws_s3 as s3,
     Stack,
 )
 
@@ -114,4 +115,35 @@ class ProjectCloudStack(Stack):
             ec2.Port.tcp(443),
         )
 
+        #S3 Bucket
+        self.s3bucket = s3.Bucket(
+        self, 'userdata_client',
+        bucket_name = "bucket-for-userdata",
+        encryption=s3.BucketEncryption.S3_MANAGED,
+        versioned=True,
+        enforce_ssl=True,
+        )
+
+        # ------------Servers--------------
+
+        # EC2 Web Server
+        instance_webserver = ec2.Instance(self, 'webserver',
+            instance_type = ec2.InstanceType('t2.micro'),
+            machine_image = ec2.MachineImage.latest_amazon_linux(
+                generation = ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+                edition = ec2.AmazonLinuxEdition.STANDARD
+            ),
+            vpc = vpc_webserver,
+            security_group = SG_webserver,
+        )
+
+        # EC2 Admin / Management Server
+        instance_managementserver = ec2.Instance(self, 'adminserver',
+            instance_type = ec2.InstanceType('t2.micro'),
+            machine_image = ec2.MachineImage.latest_windows(
+                version = ec2.WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE
+                ),
+            vpc = vpc_managementserver,
+            security_group = SG_managementserver,
+        )
 
