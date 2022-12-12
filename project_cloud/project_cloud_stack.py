@@ -10,7 +10,7 @@ class ProjectCloudStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        #This is the webserver VPC
+        #Webserver VPC
         vpc_webserver = ec2.Vpc(
             self, "VPC_1",
             ip_addresses=ec2.IpAddresses.cidr("10.10.10.0/24"),
@@ -18,13 +18,13 @@ class ProjectCloudStack(Stack):
             nat_gateways=0,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
-                    name="public", 
+                    name="public_web", 
                     cidr_mask=26, 
                     subnet_type=ec2.SubnetType.PUBLIC),
                 ]
         )   
         
-        #This is the managementserver VPC
+        #Managementserver VPC
         vpc_managementserver = ec2.Vpc(
             self, "VPC_2",
             ip_addresses=ec2.IpAddresses.cidr("10.20.20.0/24"),
@@ -32,7 +32,7 @@ class ProjectCloudStack(Stack):
             nat_gateways=0,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
-                    name="public", 
+                    name="public_man", 
                     cidr_mask=26, 
                     subnet_type=ec2.SubnetType.PUBLIC),
                 ]
@@ -115,35 +115,39 @@ class ProjectCloudStack(Stack):
             ec2.Port.tcp(443),
         )
 
-        #S3 Bucket
-        self.s3bucket = s3.Bucket(
-        self, 'userdata_client',
-        bucket_name = "bucket-for-userdata",
-        encryption=s3.BucketEncryption.S3_MANAGED,
-        versioned=True,
-        enforce_ssl=True,
-        )
+        # #S3 Bucket
+        # self.s3bucket = s3.Bucket(
+        # self, 'userdata_client',
+        # bucket_name = "bucket-for-userdata",
+        # encryption=s3.BucketEncryption.S3_MANAGED,
+        # versioned=True,
+        # enforce_ssl=True,
+        # )
 
-        # ------------Servers--------------
+        # # ------------Servers--------------
 
-        # EC2 Web Server
-        instance_webserver = ec2.Instance(self, 'webserver',
-            instance_type = ec2.InstanceType('t2.micro'),
-            machine_image = ec2.MachineImage.latest_amazon_linux(
-                generation = ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
-                edition = ec2.AmazonLinuxEdition.STANDARD
-            ),
-            vpc = vpc_webserver,
-            security_group = SG_webserver,
-        )
+        # # EC2 Web Server
+        # instance_webserver = ec2.Instance(self, 'webserver',
+        #     instance_type = ec2.InstanceType('t2.micro'),
+        #     machine_image = ec2.MachineImage.latest_amazon_linux(
+        #         generation = ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+        #         edition = ec2.AmazonLinuxEdition.STANDARD
+        #     ),
+        #     vpc = vpc_webserver,
+        #     security_group = SG_webserver,
+                
+        # )
 
-        # EC2 Admin / Management Server
-        instance_managementserver = ec2.Instance(self, 'adminserver',
-            instance_type = ec2.InstanceType('t2.micro'),
-            machine_image = ec2.MachineImage.latest_windows(
-                version = ec2.WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE
-                ),
-            vpc = vpc_managementserver,
-            security_group = SG_managementserver,
-        )
+        # # EC2 Admin / Management Server
+        # instance_managementserver = ec2.Instance(self, 'adminserver',
+        #     instance_type = ec2.InstanceType('t2.micro'),
+        #     machine_image = ec2.MachineImage.latest_windows(
+        #         version = ec2.WindowsVersion.WINDOWS_SERVER_2019_ENGLISH_FULL_BASE
+        #         ),
+        #     vpc = vpc_managementserver,
+        #     security_group = SG_managementserver,
+        # )
+
+            # Back up vault removal
+        #   removal_policy = RemovalPolicy.DESTROY
 
