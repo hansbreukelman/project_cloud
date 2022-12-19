@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "cdk-create-ami": "^0.0.116"
+  }
+}
