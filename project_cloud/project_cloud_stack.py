@@ -57,11 +57,11 @@ class ProjectCloudStack(Stack):
             ec2.Port.tcp(22),
         )
 
-        web_server_role = iam.Role(
-            self, 'webserver-role',
-            assumed_by = iam.ServicePrincipal('ec2.amazonaws.com'),
-            managed_policies = [iam.ManagedPolicy.from_aws_managed_policy_name('AmazonS3ReadOnlyAccess')],
-        )
+        # web_server_role = iam.Role(
+        #     self, 'webserver-role',
+        #     assumed_by = iam.ServicePrincipal('ec2.amazonaws.com'),
+        #     managed_policies = [iam.ManagedPolicy.from_aws_managed_policy_name('AmazonS3ReadOnlyAccess')],
+        # )
 
         #//////////// NACL Webserver \\\\\\\\\\\\
 
@@ -185,9 +185,8 @@ class ProjectCloudStack(Stack):
         
         s3deploy.BucketDeployment(
             self, "DeployWebsite",
-            sources = [s3deploy.Source.asset("./user_data")],
+            sources = [s3deploy.Source.asset("https://github.com/hansbreukelman/project_cloud/tree/master/user_data")],
             destination_bucket = bucket,
-            # destination_key_prefix = "web/static"
         )
 
          #//////////// EC2 Instance Webserver \\\\\\\\\\\\
@@ -229,7 +228,7 @@ class ProjectCloudStack(Stack):
             security_group = SG_webserver,
             key_name = 'ec2-key-pair', 
             user_data = userdata_webserver,
-            role = web_server_role,
+            # role = web_server_role,
             block_devices = [ec2.BlockDevice(
                 device_name = "/dev/xvda",
                 volume = ec2.BlockDeviceVolume.ebs(
