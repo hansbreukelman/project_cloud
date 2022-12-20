@@ -9,7 +9,7 @@ from aws_cdk import (
     Stack,
 )
 
-trusted_ip = "89.205.128.94/32"
+trusted_ip = "86.82.111.120/32"
 
 class ProjectCloudStack(Stack):
 
@@ -51,11 +51,11 @@ class ProjectCloudStack(Stack):
             ec2.Port.tcp(443),
         )
 
-        #  #SSH traffic
-        # SG_webserver.add_ingress_rule(
-        #     ec2.Peer.any_ipv4(),
-        #     ec2.Port.tcp(22),
-        # )
+         #SSH traffic
+        SG_webserver.add_ingress_rule(
+            ec2.Peer.any_ipv4(),
+            ec2.Port.tcp(22),
+        )
 
         web_server_role = iam.Role(
             self, 'webserver-role',
@@ -187,7 +187,7 @@ class ProjectCloudStack(Stack):
             self, "DeployWebsite",
             sources = [s3deploy.Source.asset("./user_data")],
             destination_bucket = bucket,
-            destination_key_prefix = "web/static"
+            # destination_key_prefix = "web/static"
         )
 
          #//////////// EC2 Instance Webserver \\\\\\\\\\\\
@@ -204,7 +204,7 @@ class ProjectCloudStack(Stack):
         userdata_webserver = ec2.UserData.for_linux()
         file_script_path = userdata_webserver.add_s3_download_command(
             bucket = bucket,
-            bucket_key = "webserver.sh",            
+            bucket_key = "user_data.sh",            
         )
 
         userdata_webserver.add_execute_file_command(file_path = file_script_path) 
@@ -469,8 +469,8 @@ class ProjectCloudStack(Stack):
         #This is where I set a permission to allow the webserver to read my s3 Bucket.
         bucket.grant_read(instance_webserver)
         
-        # #Only direct SSH connections to the admin server is allowed.
-        # SG_webserver.connections.allow_from(
-        #     other = instance_managementserver,
-        #     port_range = ec2.Port.tcp(22),
-        # )
+        #Only direct SSH connections to the admin server is allowed.
+        SG_webserver.connections.allow_from(
+            other = instance_managementserver,
+            port_range = ec2.Port.tcp(22),
+        )
