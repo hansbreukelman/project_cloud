@@ -1,15 +1,21 @@
-from constructs import Construct
 from aws_cdk import (
+    CfnOutput,
     RemovalPolicy,
     aws_ec2 as ec2,
     aws_s3 as s3,
     aws_s3_deployment as s3deploy,
+    aws_s3_assets as Asset,
     aws_iam as iam,
     aws_kms as kms,
     Stack,
 )
 
-trusted_ip = "86.82.111.120/32"
+import os
+
+import aws_cdk
+from constructs import Construct
+
+# trusted_ip = "86.82.111.120/32"
 
 class ProjectCloudStack(Stack):
 
@@ -31,6 +37,13 @@ class ProjectCloudStack(Stack):
                     subnet_type=ec2.SubnetType.PUBLIC),
                 ]
         )   
+        
+        web_server_role = iam.Role(
+            self, 'webserver-role',
+            assumed_by = iam.ServicePrincipal('ec2.amazonaws.com'),
+            managed_policies = [iam.ManagedPolicy.from_aws_managed_policy_name('AmazonS3ReadOnlyAccess')],
+        )
+        
         #//////////// SG Webserver \\\\\\\\\\\\
 
         SG_webserver = ec2.SecurityGroup(self, "SGwebserver",
@@ -51,22 +64,16 @@ class ProjectCloudStack(Stack):
             ec2.Port.tcp(443),
         )
 
-         #SSH traffic
-        SG_webserver.add_ingress_rule(
-            ec2.Peer.any_ipv4(),
-            ec2.Port.tcp(22),
+        # SSH from the admin server.
+        SG_webserver.connections.allow_from(
+            ec2.Peer.ipv4("10.20.20.0/24"), 
+            ec2.Port.tcp(22)
         )
-
-        # web_server_role = iam.Role(
-        #     self, 'webserver-role',
-        #     assumed_by = iam.ServicePrincipal('ec2.amazonaws.com'),
-        #     managed_policies = [iam.ManagedPolicy.from_aws_managed_policy_name('AmazonS3ReadOnlyAccess')],
-        # )
 
         #//////////// NACL Webserver \\\\\\\\\\\\
 
         # NACL webserver
-        nacl_web = ec2.NetworkAcl(
+        NACL_webserver = ec2.NetworkAcl(
             self, "NACL_Web", 
             vpc = vpc_webserver,
             subnet_selection = ec2.SubnetSelection(
@@ -74,10 +81,9 @@ class ProjectCloudStack(Stack):
             )
         )
         # NACL inbound HTTP webserver
-        nacl_web_entry = ec2.NetworkAclEntry(
-            self, "Web HTTP inbound",
+        NACL_webserver.add_entry(
+            id = "Web HTTP inbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_web,
             rule_number = 100,
             traffic = ec2.AclTraffic.tcp_port(80),
             direction = ec2.TrafficDirection.INGRESS,
@@ -85,10 +91,9 @@ class ProjectCloudStack(Stack):
         )
 
         # NACL outbound HTTP webserver
-        nacl_web_entry = ec2.NetworkAclEntry(
-            self, "Web HTTP outbound",
+        NACL_webserver.add_entry(
+            id = "Web HTTP outbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_web,
             rule_number = 100,
             traffic = ec2.AclTraffic.tcp_port(80),
             direction = ec2.TrafficDirection.EGRESS,
@@ -96,10 +101,9 @@ class ProjectCloudStack(Stack):
         )
 
         # NACL inbound HTTPS webserver
-        nacl_web_entry = ec2.NetworkAclEntry(
-            self, "Web HTTPS inbound",
+        NACL_webserver.add_entry(
+            id = "Web HTTPS inbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_web,
             rule_number = 110,
             traffic = ec2.AclTraffic.tcp_port(443),
             direction = ec2.TrafficDirection.INGRESS,
@@ -107,10 +111,9 @@ class ProjectCloudStack(Stack):
         )
 
         # NACL outbound HTTPS webserver
-        nacl_web_entry = ec2.NetworkAclEntry(
-            self, "Web HTTPS outbound",
+        NACL_webserver.add_entry(
+            id = "Web HTTPS outbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_web,
             rule_number = 110,
             traffic = ec2.AclTraffic.tcp_port(443),
             direction = ec2.TrafficDirection.EGRESS,
@@ -118,10 +121,9 @@ class ProjectCloudStack(Stack):
         )
 
         # NACL inbound Custom TCP webserver
-        nacl_web_entry = ec2.NetworkAclEntry(
-            self, "Web CTCP inbound",
+        NACL_webserver.add_entry(
+            id = "Web CTCP inbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_web,
             rule_number = 120,
             traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
             direction = ec2.TrafficDirection.INGRESS,
@@ -129,10 +131,9 @@ class ProjectCloudStack(Stack):
         )
 
         # NACL outbound Custom TCP webserver
-        nacl_web_entry = ec2.NetworkAclEntry(
-            self, "Web CTCP outbound",
+        NACL_webserver.add_entry(
+            id = "Web CTCP outbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_web,
             rule_number = 120,
             traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
             direction = ec2.TrafficDirection.EGRESS,
@@ -140,42 +141,19 @@ class ProjectCloudStack(Stack):
         )
         
         # NACL inbound SSH webserver
-        nacl_web_entry = ec2.NetworkAclEntry(
-            self, "Web SSH inbound",
+        NACL_webserver.add_entry(
+            id = "Web SSH inbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_web,
             rule_number = 125,
             traffic = ec2.AclTraffic.tcp_port(22),
             direction = ec2.TrafficDirection.INGRESS,
             rule_action = ec2.Action.ALLOW
         )
-        
-        # # NACL inbound RDP Managementserver
-        # nacl_web_entry = ec2.NetworkAclEntry(
-        #     self, "Web RDP inbound",
-        #     cidr = ec2.AclCidr.any_ipv4(),
-        #     network_acl = nacl_web,
-        #     rule_number = 140,
-        #     traffic = ec2.AclTraffic.tcp_port(3389),
-        #     direction = ec2.TrafficDirection.INGRESS,
-        #     rule_action = ec2.Action.ALLOW
-        # )
-        
-        # # NACL outbound RDP Managementserver
-        # nacl_web_entry = ec2.NetworkAclEntry(
-        #     self, "Web RDP outbound",
-        #     cidr = ec2.AclCidr.any_ipv4(),
-        #     network_acl = nacl_web,
-        #     rule_number = 140,
-        #     traffic = ec2.AclTraffic.tcp_port(3389),
-        #     direction = ec2.TrafficDirection.EGRESS,
-        #     rule_action = ec2.Action.ALLOW
-        # )
 
         #//////////// S3 User Bucket \\\\\\\\\\\\
 
-        bucket = s3.Bucket(
-            self, id = 'userdata_client_test', 
+        Bucket = s3.Bucket(
+            self, "userdata_client_test", 
             bucket_name = "bucket-for-userdata", 
             removal_policy = RemovalPolicy.DESTROY,
             encryption = s3.BucketEncryption.S3_MANAGED,
@@ -183,26 +161,26 @@ class ProjectCloudStack(Stack):
             auto_delete_objects = True
         )
         
-        s3deploy.BucketDeployment(
+        user_data_upload = s3deploy.BucketDeployment(
             self, "DeployWebsite",
-            sources = [s3deploy.Source.asset("https://github.com/hansbreukelman/project_cloud/tree/master/user_data")],
-            destination_bucket = bucket,
+            sources = [s3deploy.Source.asset("/Users/hansbreukelman/project_cloud/user_data")],
+            destination_bucket = Bucket,
         )
 
          #//////////// EC2 Instance Webserver \\\\\\\\\\\\
 
         # --- AMI Webserver ---
         web_ami = ec2.MachineImage.latest_amazon_linux(
-            generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
-            edition=ec2.AmazonLinuxEdition.STANDARD,
-            virtualization=ec2.AmazonLinuxVirt.HVM,
-            storage=ec2.AmazonLinuxStorage.GENERAL_PURPOSE,
+            generation = ec2.AmazonLinuxGeneration.AMAZON_LINUX_2,
+            edition = ec2.AmazonLinuxEdition.STANDARD,
+            virtualization = ec2.AmazonLinuxVirt.HVM,
+            storage = ec2.AmazonLinuxStorage.GENERAL_PURPOSE,
         )
         
         #This is where the user data for the webserver is downloaded.
         userdata_webserver = ec2.UserData.for_linux()
         file_script_path = userdata_webserver.add_s3_download_command(
-            bucket = bucket,
+            bucket = Bucket,
             bucket_key = "user_data.sh",            
         )
 
@@ -210,7 +188,7 @@ class ProjectCloudStack(Stack):
 
         #This is where the index page is downloaded.
         userdata_webserver.add_s3_download_command(
-            bucket = bucket,
+            bucket = Bucket,
             bucket_key = "index.html",
             #local_file = "/tmp/index.html",
             local_file = "/var/www/html/",
@@ -228,7 +206,7 @@ class ProjectCloudStack(Stack):
             security_group = SG_webserver,
             key_name = 'ec2-key-pair', 
             user_data = userdata_webserver,
-            # role = web_server_role,
+            role = web_server_role,
             block_devices = [ec2.BlockDevice(
                 device_name = "/dev/xvda",
                 volume = ec2.BlockDeviceVolume.ebs(
@@ -261,17 +239,19 @@ class ProjectCloudStack(Stack):
             security_group_name = "SGManServer",
             allow_all_outbound = True,
         )
+        
+        #RDP traffic
+        SG_managementserver.add_ingress_rule(
+            ec2.Peer.any_ipv4(),
+            # ec2.Peer.ipv4(trusted_ip),
+            ec2.Port.tcp(3389),
+        )
             
         #SSH traffic
         SG_managementserver.add_ingress_rule(
-            ec2.Peer.ipv4(trusted_ip),
+            ec2.Peer.any_ipv4(),
+            # ec2.Peer.ipv4(trusted_ip),
             ec2.Port.tcp(22),
-        )
-
-        #RDP traffic
-        SG_managementserver.add_ingress_rule(
-            ec2.Peer.ipv4(trusted_ip),
-            ec2.Port.tcp(3389),
         )
 
         #HTTP traffic
@@ -289,132 +269,125 @@ class ProjectCloudStack(Stack):
         #//////////// NACL Managementserver\\\\\\\\\\\\
 
         # NACL Managmentserver
-        nacl_man = ec2.NetworkAcl(
+        NACL_man = ec2.NetworkAcl(
             self, "NACL_Man", 
             vpc = vpc_managementserver,
             subnet_selection = ec2.SubnetSelection(
-                subnet_type = ec2.SubnetType.PUBLIC
+                subnet_type = ec2.SubnetType.PUBLIC,
             )
         )
         
-         # NACL inbound SSH Managementserver
-        nacl_man_entry = ec2.NetworkAclEntry(
-            self, "Man SSH inbound",
-            cidr = ec2.AclCidr.ipv4(trusted_ip),
-            network_acl = nacl_man,
-            rule_number = 130,
-            traffic = ec2.AclTraffic.tcp_port(22),
-            direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW
-        )
-        
-        # NACL outbound SSH Managementserver
-        nacl_man_entry = ec2.NetworkAclEntry(
-            self, "Man SSH outbound",
-            cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_man,
-            rule_number = 130,
-            traffic = ec2.AclTraffic.tcp_port(22),
-            direction = ec2.TrafficDirection.EGRESS,
-            rule_action = ec2.Action.ALLOW
-        ) 
-        
-        # NACL inbound Custom TCP Managementserver
-        nacl_man_entry = ec2.NetworkAclEntry(
-            self, "Man CTCP inbound",
-            cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_man,
-            rule_number = 140,
-            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
-            direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW
-        )
-
-        # NACL outbound Custom TCP Managementserver
-        nacl_man_entry = ec2.NetworkAclEntry(
-            self, "Man CTCP outbound",
-            cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_man,
-            rule_number = 140,
-            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
-            direction = ec2.TrafficDirection.EGRESS,
-            rule_action = ec2.Action.ALLOW
-        )
-        
         # NACL inbound RDP Managementserver
-        nacl_man_entry = ec2.NetworkAclEntry(
-            self, "Man RDP inbound",
-            cidr = ec2.AclCidr.ipv4(trusted_ip),
-            network_acl = nacl_man,
-            rule_number = 150,
+        NACL_man.add_entry(
+            id = "Man RDP inbound",
+            cidr = ec2.AclCidr.any_ipv4(),
+            # cidr = ec2.AclCidr.ipv4(trusted_ip),
+            rule_number = 130,
             traffic = ec2.AclTraffic.tcp_port(3389),
             direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW
+            rule_action = ec2.Action.ALLOW,
         )
         
         # NACL outbound RDP Managementserver
-        nacl_man_entry = ec2.NetworkAclEntry(
-            self, "Man RDP outbound",
+        NACL_man.add_entry(
+            id = "Man RDP outbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_man,
-            rule_number = 150,
+            rule_number = 130,
             traffic = ec2.AclTraffic.tcp_port(3389),
             direction = ec2.TrafficDirection.EGRESS,
-            rule_action = ec2.Action.ALLOW
+            rule_action = ec2.Action.ALLOW,
+        )
+        
+         # NACL inbound SSH Managementserver
+        NACL_man.add_entry(
+            id = "Man SSH inbound",
+            cidr = ec2.AclCidr.any_ipv4(),
+            # cidr = ec2.AclCidr.ipv4(trusted_ip),
+            rule_number = 140,
+            traffic = ec2.AclTraffic.tcp_port(22),
+            direction = ec2.TrafficDirection.INGRESS,
+            rule_action = ec2.Action.ALLOW,
+        )
+        
+        # NACL outbound SSH Managementserver
+        NACL_man.add_entry(
+            id = "Man SSH outbound",
+            cidr = ec2.AclCidr.any_ipv4(),
+            rule_number = 140,
+            traffic = ec2.AclTraffic.tcp_port(22),
+            direction = ec2.TrafficDirection.EGRESS,
+            rule_action = ec2.Action.ALLOW,
+        ) 
+        
+        # NACL inbound Custom TCP Managementserver
+        NACL_man.add_entry(
+            id = "Man CTCP inbound",
+            cidr = ec2.AclCidr.any_ipv4(),
+            rule_number = 150,
+            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
+            direction = ec2.TrafficDirection.INGRESS,
+            rule_action = ec2.Action.ALLOW,
+        )
+
+        # NACL outbound Custom TCP Managementserver
+        NACL_man.add_entry(
+            id = "Man CTCP outbound",
+            cidr = ec2.AclCidr.any_ipv4(),
+            rule_number = 150,
+            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
+            direction = ec2.TrafficDirection.EGRESS,
+            rule_action = ec2.Action.ALLOW,
         )
         
         # NACL inbound HTTP Managementserver
-        nacl_man_entry = ec2.NetworkAclEntry(
-            self, "Man HTTP inbound",
+        NACL_man.add_entry(
+            id = "Man HTTP inbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_man,
             rule_number = 160,
             traffic = ec2.AclTraffic.tcp_port(80),
             direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW
+            rule_action = ec2.Action.ALLOW,
         )
 
         # NACL outbound HTTP Managementserver
-        nacl_man_entry = ec2.NetworkAclEntry(
-            self, "Man HTTP outbound",
+        NACL_man.add_entry(
+            id = "Man HTTP outbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_man,
             rule_number = 160,
             traffic = ec2.AclTraffic.tcp_port(80),
             direction = ec2.TrafficDirection.EGRESS,
-            rule_action = ec2.Action.ALLOW
+            rule_action = ec2.Action.ALLOW,
         )
 
         # NACL inbound HTTPS Managementserver
-        nacl_man_entry = ec2.NetworkAclEntry(
-            self, "Man HTTPS inbound",
+        NACL_man.add_entry(
+            id = "Man HTTPS inbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_man,
             rule_number = 170,
             traffic = ec2.AclTraffic.tcp_port(443),
             direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW
+            rule_action = ec2.Action.ALLOW,
         )
 
         # NACL outbound HTTPS Managementserver
-        nacl_man_entry = ec2.NetworkAclEntry(
-            self, "Man HTTPS outbound",
+        NACL_man.add_entry(
+            id =  "Man HTTPS outbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            network_acl = nacl_man,
             rule_number = 170,
             traffic = ec2.AclTraffic.tcp_port(443),
             direction = ec2.TrafficDirection.EGRESS,
-            rule_action = ec2.Action.ALLOW
+            rule_action = ec2.Action.ALLOW,
         )
 
          #//////////// EC2 Instance Managementserver \\\\\\\\\\\\
 
         man_ami = ec2.WindowsImage(
-            ec2.WindowsVersion.WINDOWS_SERVER_2022_ENGLISH_FULL_BASE
+            ec2.WindowsVersion.WINDOWS_SERVER_2022_ENGLISH_FULL_BASE,
         )
 
         # EC2 Admin / Management Server
-        instance_managementserver = ec2.Instance(self, 'adminserver',
+        instance_managementserver = ec2.Instance(
+            self, "adminserver",
             instance_type = ec2.InstanceType('t2.micro'),
             machine_image = man_ami,
             vpc = vpc_managementserver,
@@ -466,10 +439,11 @@ class ProjectCloudStack(Stack):
         )
 
         #This is where I set a permission to allow the webserver to read my s3 Bucket.
-        bucket.grant_read(instance_webserver)
+        Bucket.grant_read(instance_webserver)
         
         #Only direct SSH connections to the admin server is allowed.
         SG_webserver.connections.allow_from(
             other = instance_managementserver,
             port_range = ec2.Port.tcp(22),
         )
+    
