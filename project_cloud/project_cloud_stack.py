@@ -403,7 +403,7 @@ class ProjectCloudStack(Stack):
             )]
         )
 
- #VPC peering connection
+        #VPC peering connection
         VPC_Peering_connection = ec2.CfnVPCPeeringConnection(
             self, "VPCPeeringConnection",
             peer_vpc_id=vpc_managementserver.vpc_id,
@@ -446,5 +446,3 @@ class ProjectCloudStack(Stack):
             other = instance_managementserver,
             port_range = ec2.Port.tcp(22),
         )
-    
-    # hello
