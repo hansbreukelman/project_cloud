@@ -429,7 +429,8 @@ class ProjectCloudStack(Stack):
                 destination_cidr_block = "10.20.20.0/24", 
                 vpc_peering_connection_id = VPC_Peering_connection.ref,
         )
-             
+          
+        #This is where the user data for the managementserver is described.   
         instance_managementserver.user_data.for_windows()
         instance_managementserver.add_user_data(
             "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0",
