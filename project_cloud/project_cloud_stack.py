@@ -431,13 +431,13 @@ class ProjectCloudStack(Stack):
         )
           
         #This is where the user data for the managementserver is described.   
-        instance_managementserver.user_data.for_windows()
-        instance_managementserver.add_user_data(
-            "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0",
-            "Start-Service sshd",
-            "Set-Service -Name sshd -StartupType 'Automatic'",
-            "New-NetFirewallRule -Name sshd -DisplayName 'Allow SSH' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22",
-        )
+        # instance_managementserver.user_data.for_windows()
+        # instance_managementserver.add_user_data(
+        #     "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0",
+        #     "Start-Service sshd",
+        #     "Set-Service -Name sshd -StartupType 'Automatic'",
+        #     "New-NetFirewallRule -Name sshd -DisplayName 'Allow SSH' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22",
+        # )
 
         #This is where I set a permission to allow the webserver to read my s3 Bucket.
         Bucket.grant_read(instance_webserver)
