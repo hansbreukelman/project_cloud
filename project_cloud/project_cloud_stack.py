@@ -163,7 +163,7 @@ class ProjectCloudStack(Stack):
         
         user_data_upload = s3deploy.BucketDeployment(
             self, "DeployWebsite",
-            sources = [s3deploy.Source.asset("./project_cloud/user_data")],
+            sources = [s3deploy.Source.asset("/Users/hansbreukelman/project_cloud/user_data")],
             destination_bucket = Bucket,
         )
 
