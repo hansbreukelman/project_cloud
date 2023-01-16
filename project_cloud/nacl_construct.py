@@ -1,7 +1,12 @@
 from aws_cdk import (
     aws_ec2 as ec2,
 )
-from constructs import Construct
+
+from constructs import Construct  
+
+from requests import get
+
+trusted_ip = get('https://api.ipify.org').text + '/32'
 
 class NaclConstruct(Construct):
 
@@ -104,8 +109,8 @@ class NaclConstruct(Construct):
         # NACL inbound RDP Managementserver
         NACL_man.add_entry(
             id = "Man RDP inbound",
-            cidr = ec2.AclCidr.any_ipv4(),
-            # cidr = ec2.AclCidr.ipv4(trusted_ip),
+            # cidr = ec2.AclCidr.any_ipv4(),
+            cidr = ec2.AclCidr.ipv4(trusted_ip),
             rule_number = 130,
             traffic = ec2.AclTraffic.tcp_port(3389),
             direction = ec2.TrafficDirection.INGRESS,
@@ -125,8 +130,8 @@ class NaclConstruct(Construct):
          # NACL inbound SSH Managementserver
         NACL_man.add_entry(
             id = "Man SSH inbound",
-            cidr = ec2.AclCidr.any_ipv4(),
-            # cidr = ec2.AclCidr.ipv4(trusted_ip),
+            # cidr = ec2.AclCidr.any_ipv4(),
+            cidr = ec2.AclCidr.ipv4(trusted_ip),
             rule_number = 140,
             traffic = ec2.AclTraffic.tcp_port(22),
             direction = ec2.TrafficDirection.INGRESS,

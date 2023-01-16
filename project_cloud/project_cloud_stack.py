@@ -16,7 +16,11 @@ import os
 import aws_cdk
 from constructs import Construct
 
-# trusted_ip = "86.82.111.120/32"
+from requests import get
+
+trusted_ip = get('https://api.ipify.org').text + '/32'
+
+# trusted_ip = "89.205.142.13/32"
 
 class ProjectCloudStack(Stack):
 
@@ -196,15 +200,15 @@ class ProjectCloudStack(Stack):
         
         #RDP traffic
         SG_managementserver.add_ingress_rule(
-            ec2.Peer.any_ipv4(),
-            # ec2.Peer.ipv4(trusted_ip),
+            # ec2.Peer.any_ipv4(),
+            ec2.Peer.ipv4(trusted_ip),
             ec2.Port.tcp(3389),
         )
             
         #SSH traffic
         SG_managementserver.add_ingress_rule(
-            ec2.Peer.any_ipv4(),
-            # ec2.Peer.ipv4(trusted_ip),
+            # ec2.Peer.any_ipv4(),
+            ec2.Peer.ipv4(trusted_ip),
             ec2.Port.tcp(22),
         )
 
