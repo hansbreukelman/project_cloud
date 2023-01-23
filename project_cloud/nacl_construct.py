@@ -33,6 +33,37 @@ class NaclConstruct(Construct):
             direction = ec2.TrafficDirection.INGRESS,
             rule_action = ec2.Action.ALLOW
         )
+        
+        # NACL inbound SSH webserver
+        NACL_webserver.add_entry(
+            id = "Web SSH inbound",
+            # cidr = ec2.AclCidr.any_ipv4(),
+            cidr = ec2.AclCidr.ipv4('10.20.20.0/24'),
+            rule_number = 110,
+            traffic = ec2.AclTraffic.tcp_port(22),
+            direction = ec2.TrafficDirection.INGRESS,
+            rule_action = ec2.Action.ALLOW
+        )
+
+        # NACL inbound Custom TCP webserver - ipv4
+        NACL_webserver.add_entry(
+            id = "Web CTCP inbound",
+            cidr = ec2.AclCidr.any_ipv4(),
+            rule_number = 120,
+            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
+            direction = ec2.TrafficDirection.INGRESS,
+            rule_action = ec2.Action.ALLOW
+        )
+        
+        # NACL inbound Custom TCP webserver - ipv6
+        NACL_webserver.add_entry(
+            id = "Web CTCP inbound",
+            cidr = ec2.AclCidr.any_ipv6(),
+            rule_number = 130,
+            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
+            direction = ec2.TrafficDirection.INGRESS,
+            rule_action = ec2.Action.ALLOW
+        )
 
         # NACL outbound HTTP webserver
         NACL_webserver.add_entry(
@@ -43,17 +74,7 @@ class NaclConstruct(Construct):
             direction = ec2.TrafficDirection.EGRESS,
             rule_action = ec2.Action.ALLOW
         )
-
-        # NACL inbound HTTPS webserver
-        NACL_webserver.add_entry(
-            id = "Web HTTPS inbound",
-            cidr = ec2.AclCidr.any_ipv4(),
-            rule_number = 110,
-            traffic = ec2.AclTraffic.tcp_port(443),
-            direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW
-        )
-
+        
         # NACL outbound HTTPS webserver
         NACL_webserver.add_entry(
             id = "Web HTTPS outbound",
@@ -63,18 +84,8 @@ class NaclConstruct(Construct):
             direction = ec2.TrafficDirection.EGRESS,
             rule_action = ec2.Action.ALLOW
         )
-
-        # NACL inbound Custom TCP webserver
-        NACL_webserver.add_entry(
-            id = "Web CTCP inbound",
-            cidr = ec2.AclCidr.any_ipv4(),
-            rule_number = 120,
-            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
-            direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW
-        )
-
-        # NACL outbound Custom TCP webserver
+        
+        # NACL outbound Custom TCP webserver - ipv4
         NACL_webserver.add_entry(
             id = "Web CTCP outbound",
             cidr = ec2.AclCidr.any_ipv4(),
@@ -84,18 +95,35 @@ class NaclConstruct(Construct):
             rule_action = ec2.Action.ALLOW
         )
         
-        # NACL inbound SSH webserver
+        # NACL outbound HTTP webserver - ipv6
         NACL_webserver.add_entry(
-            id = "Web SSH inbound",
-            # cidr = ec2.AclCidr.any_ipv4(),
-            cidr = ec2.AclCidr.ipv4('10.20.20.0/24'),
-            rule_number = 125,
-            traffic = ec2.AclTraffic.tcp_port(22),
-            direction = ec2.TrafficDirection.INGRESS,
+            id = "Web http outbound ipv6",
+            cidr = ec2.AclCidr.any_ipv6(),
+            rule_number = 130,
+            traffic = ec2.AclTraffic.tcp_port_range(80),
+            direction = ec2.TrafficDirection.EGRESS,
             rule_action = ec2.Action.ALLOW
         )
         
+        # NACL outbound HTTPS webserver - ipv6
+        NACL_webserver.add_entry(
+            id = "Web https outbound ipv6",
+            cidr = ec2.AclCidr.any_ipv6(),
+            rule_number = 140,
+            traffic = ec2.AclTraffic.tcp_port_range(80),
+            direction = ec2.TrafficDirection.EGRESS,
+            rule_action = ec2.Action.ALLOW
+        )
         
+        NACL_webserver.add_entry(
+            id = "rule-ephemeral-ipv6-egress",
+            cidr = ec2.AclCidr.any_ipv6(),
+            rule_number = 150,
+            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
+            direction = ec2.TrafficDirection.EGRESS,
+            rule_action = ec2.Action.ALLOW)
+        
+
         #//////////// NACL Managementserver\\\\\\\\\\\\
 
         # NACL Managmentserver
@@ -107,115 +135,105 @@ class NaclConstruct(Construct):
             )
         )
         
+         # NACL inbound SSH Managementserver subnet
+        NACL_man.add_entry(
+            id = "Man SSH inbound",
+            # cidr = ec2.AclCidr.any_ipv4(),
+            cidr = ec2.AclCidr.ipv4('10.10.10.0/24'),
+            rule_number = 100,
+            traffic = ec2.AclTraffic.tcp_port(22),
+            direction = ec2.TrafficDirection.INGRESS,
+            rule_action = ec2.Action.ALLOW)
+        
         # NACL inbound RDP Managementserver
         NACL_man.add_entry(
             id = "Man RDP inbound",
             # cidr = ec2.AclCidr.any_ipv4(),
             cidr = ec2.AclCidr.ipv4(trusted_ip),
-            rule_number = 130,
+            rule_number = 110,
             traffic = ec2.AclTraffic.tcp_port(3389),
             direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW,
-        )
+            rule_action = ec2.Action.ALLOW)
         
-        # NACL outbound RDP Managementserver
+        # NACL inbound Custom TCP Managementserver - Subnet Web
         NACL_man.add_entry(
-            id = "Man RDP outbound",
-            cidr = ec2.AclCidr.any_ipv4(),
+            id = "Man CTCP inbound",
+            cidr = ec2.AclCidr.ipv4("10.10.10.0/24"),
+            rule_number = 120,
+            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
+            direction = ec2.TrafficDirection.INGRESS,
+            rule_action = ec2.Action.ALLOW)
+        
+        # NACL inbound Custom TCP Managementserver - ipv6
+        NACL_man.add_entry(
+            id = "Man CTCP inbound",
+            ccidr = ec2.AclCidr.any_ipv6(),
             rule_number = 130,
-            traffic = ec2.AclTraffic.tcp_port(3389),
-            direction = ec2.TrafficDirection.EGRESS,
-            rule_action = ec2.Action.ALLOW,
-        )
+            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
+            direction = ec2.TrafficDirection.INGRESS,
+            rule_action = ec2.Action.ALLOW)
         
-         # NACL inbound SSH Managementserver
+        # NACL inbound Custom TCP Managementserver - ipv4
         NACL_man.add_entry(
-            id = "Man SSH inbound",
-            # cidr = ec2.AclCidr.any_ipv4(),
-            cidr = ec2.AclCidr.ipv4('10.10.10.0/24'),
+            id = "Man CTCP inbound",
+            ccidr = ec2.AclCidr.any_ipv4(),
             rule_number = 140,
-            traffic = ec2.AclTraffic.tcp_port(22),
+            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
             direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW,
-        )
+            rule_action = ec2.Action.ALLOW)
         
-        # NACL outbound SSH Managementserver
+        # NACL outbound SSH Managementserver subnet
         NACL_man.add_entry(
             id = "Man SSH outbound",
             cidr = ec2.AclCidr.ipv4('10.10.10.0/24'),
-            rule_number = 140,
-            traffic = ec2.AclTraffic.tcp_port(22),
-            direction = ec2.TrafficDirection.EGRESS,
-            rule_action = ec2.Action.ALLOW,
-        ) 
-        
-        NACL_man.add_entry(
-            'SSH inbound allow AdminIP',
-            cidr = ec2.AclCidr.ipv4(trusted_ip),
             rule_number = 100,
             traffic = ec2.AclTraffic.tcp_port(22),
-            direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW
-
-        )
+            direction = ec2.TrafficDirection.EGRESS,
+            rule_action = ec2.Action.ALLOW) 
         
-        # NACL inbound Custom TCP Managementserver
+        # NACL outbound HTTP Managementserver - ipv6
         NACL_man.add_entry(
-            id = "Man CTCP inbound",
-            cidr = ec2.AclCidr.any_ipv4(),
-            rule_number = 150,
-            traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
-            direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW,
-        )
-
-        # NACL outbound Custom TCP Managementserver
+            id = "Man http ipv6 outbound",
+            cidr = ec2.AclCidr.any_ipv6(),
+            rule_number = 110,
+            traffic = ec2.AclTraffic.tcp_port(80),
+            direction = ec2.TrafficDirection.EGRESS,
+            rule_action = ec2.Action.ALLOW)
+        
+        # NACL outbound HTTPS Managementserver - ipv6
         NACL_man.add_entry(
-            id = "Man CTCP outbound",
-            cidr = ec2.AclCidr.any_ipv4(),
-            rule_number = 150,
+            id = "Man https ipv6 outbound",
+            cidr = ec2.AclCidr.any_ipv6(),
+            rule_number = 120,
+            traffic = ec2.AclTraffic.tcp_port(443),
+            direction = ec2.TrafficDirection.EGRESS,
+            rule_action = ec2.Action.ALLOW)
+        
+        # NACL outbound Custom TCP Managementserver - Admin IP
+        NACL_man.add_entry(
+            id = "Man CTCP outbound AIP",
+            cidr = ec2.AclCidr.ipv4(trusted_ip),
+            rule_number = 130,
             traffic = ec2.AclTraffic.tcp_port_range(1024, 65535),
             direction = ec2.TrafficDirection.EGRESS,
-            rule_action = ec2.Action.ALLOW,
-        )
+            rule_action = ec2.Action.ALLOW)
         
-        # NACL inbound HTTP Managementserver
-        NACL_man.add_entry(
-            id = "Man HTTP inbound",
-            cidr = ec2.AclCidr.any_ipv4(),
-            rule_number = 160,
-            traffic = ec2.AclTraffic.tcp_port(80),
-            direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW,
-        )
-
         # NACL outbound HTTP Managementserver
         NACL_man.add_entry(
-            id = "Man HTTP outbound",
+            id = "Man http outbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            rule_number = 160,
-            traffic = ec2.AclTraffic.tcp_port(80),
+            rule_number = 140,
+            traffic = ec2.AclTraffic.tcp_port_range(80),
             direction = ec2.TrafficDirection.EGRESS,
-            rule_action = ec2.Action.ALLOW,
-        )
-
-        # NACL inbound HTTPS Managementserver
-        NACL_man.add_entry(
-            id = "Man HTTPS inbound",
-            cidr = ec2.AclCidr.any_ipv4(),
-            rule_number = 170,
-            traffic = ec2.AclTraffic.tcp_port(443),
-            direction = ec2.TrafficDirection.INGRESS,
-            rule_action = ec2.Action.ALLOW,
-        )
-
+            rule_action = ec2.Action.ALLOW)
+        
         # NACL outbound HTTPS Managementserver
         NACL_man.add_entry(
-            id =  "Man HTTPS outbound",
+            id = "Man https outbound",
             cidr = ec2.AclCidr.any_ipv4(),
-            rule_number = 170,
-            traffic = ec2.AclTraffic.tcp_port(443),
+            rule_number = 150,
+            traffic = ec2.AclTraffic.tcp_port_range(443),
             direction = ec2.TrafficDirection.EGRESS,
-            rule_action = ec2.Action.ALLOW,
-        )
+            rule_action = ec2.Action.ALLOW)
+    
 
