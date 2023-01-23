@@ -1,31 +1,30 @@
 from .nacl_construct import NaclConstruct
 from aws_cdk import (
-    CfnOutput,
     RemovalPolicy,
+    Duration,
+    Stack,
     aws_ec2 as ec2,
     aws_s3 as s3,
     aws_s3_deployment as s3deploy,
     aws_s3_assets as Asset,
     aws_iam as iam,
     aws_kms as kms,
-    Stack,
+    aws_backup as backup,
+    aws_events as events,
 )
 
-import os
-
-import aws_cdk
 from constructs import Construct
 
 from requests import get
 
 trusted_ip = get('https://api.ipify.org').text + '/32'
 
-# trusted_ip = "89.205.142.13/32"
-
 class ProjectCloudStack(Stack):
+    
+    # webserver = ec2.Instance
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
-        super().__init__(scope, construct_id, **kwargs)
+        super().__init__(scope, construct_id, **kwargs) 
 
 
         #//////////// VPC Webserver \\\\\\\\\\\\
@@ -33,8 +32,8 @@ class ProjectCloudStack(Stack):
         self.vpc_webserver = ec2.Vpc(
             self, "VPC_1",
             ip_addresses=ec2.IpAddresses.cidr("10.10.10.0/24"),
-            max_azs=2,
             nat_gateways=0,
+            availability_zones=['eu-central-1a'],
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     name="public_web", 
@@ -48,8 +47,8 @@ class ProjectCloudStack(Stack):
         self.vpc_managementserver = ec2.Vpc(
             self, "VPC_2",
             ip_addresses=ec2.IpAddresses.cidr("10.20.20.0/24"),
-            max_azs=2,
             nat_gateways=0,
+            availability_zones=['eu-central-1b'],
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     name="public_man", 
@@ -57,6 +56,17 @@ class ProjectCloudStack(Stack):
                     subnet_type=ec2.SubnetType.PUBLIC),
                 ]
         )  
+        
+        
+        # #//////////// Key Pairs \\\\\\\\\\\\
+        
+        self.kpr_web = ec2.CfnKeyPair(self, "kpr_web",
+            key_name = "web_KPR",
+        )
+
+        self.kpr_man = ec2.CfnKeyPair(self, "kpr_man",
+            key_name = "man_KPR",
+        )
         
         
         # #//////////// Peering connection \\\\\\\\\\\\
@@ -71,27 +81,25 @@ class ProjectCloudStack(Stack):
         #Routing table for the adminserver
         for subnet in self.vpc_managementserver.public_subnets:
             ec2.CfnRoute(
-                self, 
-                id = f"{subnet.node.id} Managementserver Route Table",
-                route_table_id = subnet.route_table.route_table_id,
-                destination_cidr_block = "10.10.10.0/24", 
-                vpc_peering_connection_id = VPC_Peering_connection.ref,
+                self, 'Managementserver Route Table',
+                route_table_id=subnet.route_table.route_table_id,
+                destination_cidr_block="10.10.10.0/24", 
+                vpc_peering_connection_id=VPC_Peering_connection.ref,
         )
         
         #Routing table for the webserver
         for subnet in self.vpc_webserver.public_subnets:
             ec2.CfnRoute(
-                self,
-                id = f"{subnet.node.id} Webserver Route Table",
-                route_table_id = subnet.route_table.route_table_id,
-                destination_cidr_block = "10.20.20.0/24", 
-                vpc_peering_connection_id = VPC_Peering_connection.ref,
+                self, 'Webserver Route Table',
+                route_table_id=subnet.route_table.route_table_id,
+                destination_cidr_block="10.20.20.0/24", 
+                vpc_peering_connection_id=VPC_Peering_connection.ref,
         )
             
         
         # #//////////// NetworkACL \\\\\\\\\\\\
             
-        networkacl = NaclConstruct(
+        self.networkacl = NaclConstruct(
             self, 'Network ACL',
             vpc_webserver = self.vpc_webserver,
             vpc_managementserver = self.vpc_managementserver,
@@ -123,6 +131,31 @@ class ProjectCloudStack(Stack):
             ec2.Port.tcp(22)
         )
         
+        # >>>>>>>>>>> KMS Module <<<<<<<<<<<<<<<
+
+        admin_key = kms.Key
+        web_key = kms.Key
+        vault_key = kms.Key
+
+        admin_key = kms.Key(self, "Admin Key",
+            enable_key_rotation = True,
+            alias = "AdminKey",
+            removal_policy = RemovalPolicy.DESTROY)
+        self.adminkms_key = admin_key
+
+        web_key = kms.Key(self, "Web Key",
+            enable_key_rotation = True,
+            alias = "WebKey",
+            removal_policy = RemovalPolicy.DESTROY)
+        self.webkms_key = web_key
+
+        vault_key = kms.Key(self, "Vault Key",
+            enable_key_rotation = True,
+            alias = "VaultKMS_key",
+            removal_policy = RemovalPolicy.DESTROY)
+        self.vaultkms_key = vault_key
+
+        
 
         #//////////// S3 User Bucket \\\\\\\\\\\\
 
@@ -135,7 +168,7 @@ class ProjectCloudStack(Stack):
             auto_delete_objects = True
         )
         
-        user_data_upload = s3deploy.BucketDeployment(
+        self.user_data_upload = s3deploy.BucketDeployment(
             self, "DeployWebsite",
             sources = [s3deploy.Source.asset("/Users/hansbreukelman/project_cloud/user_data")],
             destination_bucket = Bucket,
@@ -178,7 +211,7 @@ class ProjectCloudStack(Stack):
             machine_image = web_ami,
             vpc = self.vpc_webserver,
             security_group = SG_webserver,
-            key_name = 'ec2-key-pair', 
+            key_name = 'web_KPR', 
             user_data = userdata_webserver,
             block_devices = [ec2.BlockDevice(
                 device_name = "/dev/xvda",
@@ -186,6 +219,7 @@ class ProjectCloudStack(Stack):
                     volume_size = 8,
                     encrypted = True,
                     delete_on_termination = True,
+                    kms_key = web_key,
                 ))
             ]
         ) 
@@ -226,9 +260,29 @@ class ProjectCloudStack(Stack):
 
          #//////////// EC2 Instance Managementserver \\\\\\\\\\\\
 
+        # ------ AMI Management Server -------
         man_ami = ec2.WindowsImage(
             ec2.WindowsVersion.WINDOWS_SERVER_2022_ENGLISH_FULL_BASE,
         )
+        
+        #This is where the user data for the management server is downloaded.
+        userdata_manserver = ec2.UserData.for_windows()
+        file_script_path_man = userdata_manserver.add_s3_download_command(
+            bucket = Bucket,
+            bucket_key = "user_data_man.ps1",            
+        )
+        
+        userdata_manserver.add_execute_file_command(file_path = file_script_path_man) 
+        
+        #This is where the index page is downloaded.
+        userdata_manserver.add_s3_download_command(
+            bucket = Bucket,
+            bucket_key = "web_KPR.pem",
+            #local_file = "/tmp/index.html",
+            local_file = "./Users/Administrator/",
+        )
+
+        userdata_manserver.add_execute_file_command(file_path = "./Users/Administrator/")
 
         # EC2 Admin / Management Server
         instance_managementserver = ec2.Instance(
@@ -237,22 +291,68 @@ class ProjectCloudStack(Stack):
             machine_image = man_ami,
             vpc = self.vpc_managementserver,
             security_group = SG_managementserver,
-            key_name = 'ec2-key-pair',
+            key_name = 'man_KPR',
+            user_data = userdata_manserver,
             block_devices = [ec2.BlockDevice(
                 device_name = "/dev/sda1",
                 volume = ec2.BlockDeviceVolume.ebs(
                     volume_size = 30,
                     encrypted = True,
                     delete_on_termination = True,
+                    kms_key = admin_key,
                 )
             )]
         )
-          
+
+        userdata_manserver = ec2.CloudFormationInit.from_elements(
+            ec2.InitCommand.argv_command([
+                'powershell.exe',
+                '-command',
+                'Set-ExecutionPolicy RemoteSigned -Force'
+                ]),
+            )
+
         #This is where I set a permission to allow the webserver to read my s3 Bucket.
         Bucket.grant_read(instance_webserver)
+        
+        Bucket.grant_read(instance_managementserver)
         
         #Only direct SSH connections to the admin server is allowed.
         SG_webserver.connections.allow_from(
             other = instance_managementserver,
             port_range = ec2.Port.tcp(22),
         )
+        
+        
+        # >>>>>>>>>>> BACK UP PLAN WEBSERVER <<<<<<<<<<<<<<<
+        
+        # Created vault
+        self.bckp_vault = backup.BackupVault(
+            self, 'WebserverBV',
+            encryption_key = vault_key,
+            removal_policy = RemovalPolicy.DESTROY,
+            )
+
+        # Created plan
+        self.bckp_plan = backup.BackupPlan(
+            self, 'DailyBP',
+            backup_vault=self.bckp_vault,
+            )
+
+        # Back up instance webserver
+        self.bckp_plan.add_selection('selection',
+            resources=[
+                backup.BackupResource.from_ec2_instance(instance_webserver),
+                ],
+            allow_restores=True,
+            )
+        
+        # Rules added for the Back up plan. 
+        self.bckp_plan.add_rule(backup.BackupPlanRule(
+            enable_continuous_backup=True,
+            delete_after=Duration.days(7),
+            schedule_expression=events.Schedule.cron(
+                hour="5",
+                minute="0",
+                ))
+            )

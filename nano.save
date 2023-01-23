@@ -1,0 +1,4 @@
+#!/bin/bash
+
+$keypairid = aws ec2 describe-key-pairs --filters Name=key-name,Values=web_KPR --query KeyPairs[*].KeyPairId --output text
+X≈≈
