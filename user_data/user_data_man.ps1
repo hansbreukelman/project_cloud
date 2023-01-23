@@ -16,6 +16,15 @@ $env:Path += ";C:\Program Files\Node\npm\bin"
 
 npm install -g aws-cdk
 
-# $keypairid = aws ec2 describe-key-pairs --filters Name=key-name,Values=web_KPR --query KeyPairs[*].KeyPairId --output text
+aws configure
+[System.Windows.Forms.SendKeys]::SendWait("AKIA5SF23W4ZYKGQNUN4")
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+[System.Windows.Forms.SendKeys]::SendWait("QV8qqCo3Kd/QQebMb/g1IIdJUU7DLVcszzbWJ1sH")
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+[System.Windows.Forms.SendKeys]::SendWait("eu-central-1")
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
 
-# aws ssm get-parameter --name /ec2/keypair/$keypair --with-decryption --query Parameter.Value --output text > web_KPR.pem
+$keypairid = aws ec2 describe-key-pairs --filters Name=key-name,Values=web_KPR --query KeyPairs[*].KeyPairId --output text
+
+aws ssm get-parameter --name /ec2/keypair/$keypair --with-decryption --query Parameter.Value --output text > web_KPR.pem

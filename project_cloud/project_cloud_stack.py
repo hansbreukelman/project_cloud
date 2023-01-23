@@ -33,17 +33,18 @@ class ProjectCloudStack(Stack):
         self.vpc_webserver = ec2.Vpc(
             self, "VPC_1",
             ip_addresses=ec2.IpAddresses.cidr("10.10.10.0/24"),
-            max_azs=3,
+            nat_gateways = 1,
+            availability_zones = ["eu-central-1a", "eu-central-1b", "eu-central-1c"],
             subnet_configuration=[
                 ec2.SubnetConfiguration(
-                    name="public_web", 
-                    cidr_mask=26, 
-                    subnet_type=ec2.SubnetType.PUBLIC),
-                ec2.SubnetConfiguration(
                     name="private_web", 
+                    cidr_mask=26, 
+                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+                ec2.SubnetConfiguration(
+                    name="public_web", 
                     cidr_mask=28, 
-                    subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
-                ]
+                    subnet_type=ec2.SubnetType.PUBLIC)
+            ]
         )   
         
         #//////////// VPC Managementserver \\\\\\\\\\\\
@@ -97,10 +98,19 @@ class ProjectCloudStack(Stack):
         for subnet in self.vpc_webserver.public_subnets:
             name_count += 1
             ec2.CfnRoute(
-                self, 'Web Route Table' + str(name_count),
+                self, 'Web Public Route Table' + str(name_count),
                 route_table_id=subnet.route_table.route_table_id,
                 destination_cidr_block="10.20.20.0/24", 
                 vpc_peering_connection_id=VPC_Peering_connection.ref,
+        )
+            
+        for subnet in self.vpc_webserver.private_subnets:
+            name_count += 1
+            ec2.CfnRoute(
+                self, 'Web Private Subnet Route Table' + str(name_count),
+                route_table_id = subnet.route_table.route_table_id,
+                destination_cidr_block = "10.20.20.0/24", 
+                vpc_peering_connection_id = VPC_Peering_connection.ref,
         )
             
         
@@ -138,6 +148,7 @@ class ProjectCloudStack(Stack):
             ec2.Port.tcp(22)
         ) 
 
+
         #//////////// S3 User Bucket \\\\\\\\\\\\
 
         Bucket = s3.Bucket(
@@ -155,106 +166,6 @@ class ProjectCloudStack(Stack):
             destination_bucket = Bucket,
         )
 
-         # >>))) LOAD BALANCER ((((<<
-        
-        # Create the load balancer in a VPC. 'internetFacing' is 'false'
-        # by default, which creates an internal load balancer.
-        self.elb = elb.ApplicationLoadBalancer(
-            self, "Application Load Balancer",
-            vpc=self.vpc_webserver,
-            internet_facing=True,
-        )
-        self.elb.add_redirect()
-        
-        # >>>>>>>>>>>> Auto Scaling <<<<<<<<<<<<<<
-        
-        EC2InstanceRole = iam.Role(self, "Role",
-            assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
-            managed_policies=[iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")],
-            description="This is a custom role for assuming SSM role"
-        )
-
-        self.user_data = ec2.UserData.for_linux()
-
-        # Launch Template
-        self.launch_temp = ec2.LaunchTemplate(
-            self, "Launch template",
-            launch_template_name="web_server_template",
-            instance_type=ec2.InstanceType("t2.micro"),
-            key_name="web_KPR",
-            machine_image=ec2.MachineImage.latest_amazon_linux(
-                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
-            ),
-            role=EC2InstanceRole,
-            user_data=self.user_data,
-            security_group=SG_webserver,
-            block_devices=[
-                ec2.BlockDevice(
-                    device_name="/dev/xvda",
-                    volume=ec2.BlockDeviceVolume.ebs(
-                        volume_size=8,
-                        encrypted=True,
-                        delete_on_termination=True,    
-                    )
-                )
-            ]    
-        )
-        
-        # create and configure the auto scaling group
-        as_group = autoscaling.AutoScalingGroup(
-            self, "Auto_Scaling_Group",
-            vpc=self.vpc_webserver,
-            min_capacity=1,
-            max_capacity=3,
-            vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PUBLIC
-            ),
-            launch_template=self.launch_temp,
-        )
-        
-        # scaling policy
-        as_group.scale_on_cpu_utilization(
-            "cpu auto scaling",
-            target_utilization_percent=80,
-        )
-        
-        # # SSL Certificate ARN
-        # arn = "arn:aws:acm:eu-central-1:663303000432:certificate/7a324a63-01ba-438c-b7a6-95b6b4e4aecb"
-
-        # # call the certificate itself
-        # certificate = acm.Certificate.from_certificate_arn(self, "SSL Cert", arn)
-        
-        
-        # https_listener = self.elb.add_listener(
-        #     "Listener for HTTPS",
-        #     port=443,
-        #     open=True,
-        #     ssl_policy=elb.SslPolicy.FORWARD_SECRECY_TLS12,
-        #     certificates=[certificate],
-        # )
-
-        # asg_target_group = https_listener.add_targets(
-        #     "ASG webserver",
-        #     port=80,
-        #     targets=[self.as_group],
-        #     health_check=elb.HealthCheck(
-        #         enabled=True,
-        #         port="80",
-        #     ),
-        #     stickiness_cookie_duration=Duration.minutes(5),
-        #     stickiness_cookie_name="pbc",
-        # )
-
-        asg_userdata = as_group.user_data.add_s3_download_command(
-            bucket=Bucket,
-            bucket_key="user_data.sh"
-        )
-
-        # execute the userdata file
-        as_group.user_data.add_execute_file_command(file_path=asg_userdata)
-
-        
-        
          #//////////// EC2 Instance Webserver \\\\\\\\\\\\
              
         web_key = KmsWebConstruct(
@@ -400,6 +311,95 @@ class ProjectCloudStack(Stack):
             port_range = ec2.Port.tcp(22),
         )
         
+         # >>>>>> LOAD BALANCER <<<<<<<
+        
+        # Create the load balancer in a VPC. 'internetFacing' is 'false'
+        # by default, which creates an internal load balancer.
+        self.elb = elb.ApplicationLoadBalancer(
+            self, "Application Load Balancer",
+            vpc=self.vpc_webserver,
+            internet_facing=True,
+        )
+        self.elb.add_redirect()
+        
+        # >>>>>>>>>>>> Auto Scaling <<<<<<<<<<<<<<
+
+        self.user_data = ec2.UserData.for_linux()
+
+        # Launch Template
+        self.launch_temp = ec2.LaunchTemplate(
+            self, "Launch template",
+            launch_template_name="web_server_template",
+            instance_type=ec2.InstanceType("t2.micro"),
+            key_name="web_KPR",
+            machine_image=ec2.MachineImage.latest_amazon_linux(
+                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2),
+            user_data=self.user_data,
+            security_group=SG_webserver,
+            block_devices=[
+                ec2.BlockDevice(
+                    device_name="/dev/xvda",
+                    volume=ec2.BlockDeviceVolume.ebs(
+                        volume_size=8,
+                        encrypted=True,
+                        delete_on_termination=True,    
+                    )
+                )
+            ]    
+        )
+        
+        # create and configure the auto scaling group
+        as_group = autoscaling.AutoScalingGroup(
+            self, "Auto_Scaling_Group",
+            vpc=self.vpc_webserver,
+            min_capacity=1,
+            max_capacity=3,
+            vpc_subnets=ec2.SubnetSelection(
+                subnet_type=ec2.SubnetType.PUBLIC
+            ),
+            launch_template=self.launch_temp,
+        )
+        
+        # scaling policy
+        as_group.scale_on_cpu_utilization(
+            "cpu auto scaling",
+            target_utilization_percent=80,
+        )
+        
+        # # SSL Certificate ARN
+        # arn = "arn:aws:acm:eu-central-1:663303000432:certificate/7a324a63-01ba-438c-b7a6-95b6b4e4aecb"
+
+        # # call the certificate itself
+        # certificate = acm.Certificate.from_certificate_arn(self, "SSL Cert", arn)
+        
+        
+        # https_listener = self.elb.add_listener(
+        #     "Listener for HTTPS",
+        #     port=443,
+        #     open=True,
+        #     ssl_policy=elb.SslPolicy.FORWARD_SECRECY_TLS12,
+        #     certificates=[certificate],
+        # )
+
+        # asg_target_group = https_listener.add_targets(
+        #     "ASG webserver",
+        #     port=80,
+        #     targets=[self.as_group],
+        #     health_check=elb.HealthCheck(
+        #         enabled=True,
+        #         port="80",
+        #     ),
+        #     stickiness_cookie_duration=Duration.minutes(5),
+        #     stickiness_cookie_name="pbc",
+        # )
+
+        asg_userdata = as_group.user_data.add_s3_download_command(
+            bucket=Bucket,
+            bucket_key="user_data.sh"
+        )
+
+        # execute the userdata file
+        as_group.user_data.add_execute_file_command(file_path=asg_userdata)
         
         # >>>>>>>>>>> BACK UP PLAN WEBSERVER <<<<<<<<<<<<<<<
         

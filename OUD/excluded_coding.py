@@ -68,3 +68,15 @@
 #             ec2.Peer.any_ipv4(),
 #             ec2.Port.tcp(443),
 #         )
+
+        # #Create a rule that allow SSH from the admin server.
+        # SG_webserver.connections.allow_from(
+        #     ec2.Peer.ipv4("10.20.20.0/24"), ec2.Port.tcp(22))
+        
+        #  EC2InstanceRole = iam.Role(self, "Role",
+        #     assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
+        #     managed_policies=[iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")],
+        #     description="This is a custom role for assuming SSM role"
+        # )
+        
+        # role=EC2InstanceRole,
