@@ -56,3 +56,15 @@
 # Start-Process -FilePath msiexec -Args "/i $installerPath /passive" -Verb RunAs -Wait
 # Remove-Item $installerPath
 # $env:Path += ";C:\Program Files\Node\npm\bin"
+
+# #HTTP traffic
+#         SG_managementserver.add_ingress_rule(
+#             ec2.Peer.any_ipv4(),
+#             ec2.Port.tcp(80),
+#         )
+
+#         #HTTPS traffic
+#         SG_managementserver.add_ingress_rule(
+#             ec2.Peer.any_ipv4(),
+#             ec2.Port.tcp(443),
+#         )

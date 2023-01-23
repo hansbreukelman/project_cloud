@@ -1,4 +1,5 @@
 from .nacl_construct import NaclConstruct
+from .kms_construct import KmsAdminConstruct, KmsWebConstruct, KmsVaultConstruct
 from aws_cdk import (
     RemovalPolicy,
     Duration,
@@ -11,6 +12,9 @@ from aws_cdk import (
     aws_kms as kms,
     aws_backup as backup,
     aws_events as events,
+    aws_elasticloadbalancingv2 as elb,
+    aws_autoscaling as autoscaling,
+    aws_certificatemanager as acm,
 )
 
 from constructs import Construct
@@ -20,25 +24,25 @@ from requests import get
 trusted_ip = get('https://api.ipify.org').text + '/32'
 
 class ProjectCloudStack(Stack):
-    
-    # webserver = ec2.Instance
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs) 
-
-
+        
         #//////////// VPC Webserver \\\\\\\\\\\\
 
         self.vpc_webserver = ec2.Vpc(
             self, "VPC_1",
             ip_addresses=ec2.IpAddresses.cidr("10.10.10.0/24"),
-            nat_gateways=0,
-            availability_zones=['eu-central-1a'],
+            max_azs=3,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     name="public_web", 
                     cidr_mask=26, 
                     subnet_type=ec2.SubnetType.PUBLIC),
+                ec2.SubnetConfiguration(
+                    name="private_web", 
+                    cidr_mask=28, 
+                    subnet_type=ec2.SubnetType.PRIVATE_ISOLATED),
                 ]
         )   
         
@@ -68,7 +72,6 @@ class ProjectCloudStack(Stack):
             key_name = "man_KPR",
         )
         
-        
         # #//////////// Peering connection \\\\\\\\\\\\
             
          #VPC peering connection
@@ -77,11 +80,14 @@ class ProjectCloudStack(Stack):
             peer_vpc_id=self.vpc_managementserver.vpc_id,
             vpc_id=self.vpc_webserver.vpc_id,
         )
+        
+        name_count = 0
 
         #Routing table for the adminserver
         for subnet in self.vpc_managementserver.public_subnets:
+            name_count += 1
             ec2.CfnRoute(
-                self, 'Managementserver Route Table',
+                self, 'Management Route Table' + str(name_count),
                 route_table_id=subnet.route_table.route_table_id,
                 destination_cidr_block="10.10.10.0/24", 
                 vpc_peering_connection_id=VPC_Peering_connection.ref,
@@ -89,8 +95,9 @@ class ProjectCloudStack(Stack):
         
         #Routing table for the webserver
         for subnet in self.vpc_webserver.public_subnets:
+            name_count += 1
             ec2.CfnRoute(
-                self, 'Webserver Route Table',
+                self, 'Web Route Table' + str(name_count),
                 route_table_id=subnet.route_table.route_table_id,
                 destination_cidr_block="10.20.20.0/24", 
                 vpc_peering_connection_id=VPC_Peering_connection.ref,
@@ -126,36 +133,10 @@ class ProjectCloudStack(Stack):
         )
 
         # SSH from the admin server.
-        SG_webserver.connections.allow_from(
-            ec2.Peer.ipv4("10.20.20.0/24"), 
+        SG_webserver.add_ingress_rule(
+            ec2.Peer.any_ipv4(),
             ec2.Port.tcp(22)
-        )
-        
-        # >>>>>>>>>>> KMS Module <<<<<<<<<<<<<<<
-
-        admin_key = kms.Key
-        web_key = kms.Key
-        vault_key = kms.Key
-
-        admin_key = kms.Key(self, "Admin Key",
-            enable_key_rotation = True,
-            alias = "AdminKey",
-            removal_policy = RemovalPolicy.DESTROY)
-        self.adminkms_key = admin_key
-
-        web_key = kms.Key(self, "Web Key",
-            enable_key_rotation = True,
-            alias = "WebKey",
-            removal_policy = RemovalPolicy.DESTROY)
-        self.webkms_key = web_key
-
-        vault_key = kms.Key(self, "Vault Key",
-            enable_key_rotation = True,
-            alias = "VaultKMS_key",
-            removal_policy = RemovalPolicy.DESTROY)
-        self.vaultkms_key = vault_key
-
-        
+        ) 
 
         #//////////// S3 User Bucket \\\\\\\\\\\\
 
@@ -174,7 +155,111 @@ class ProjectCloudStack(Stack):
             destination_bucket = Bucket,
         )
 
+         # >>))) LOAD BALANCER ((((<<
+        
+        # Create the load balancer in a VPC. 'internetFacing' is 'false'
+        # by default, which creates an internal load balancer.
+        self.elb = elb.ApplicationLoadBalancer(
+            self, "Application Load Balancer",
+            vpc=self.vpc_webserver,
+            internet_facing=True,
+        )
+        self.elb.add_redirect()
+        
+        # >>>>>>>>>>>> Auto Scaling <<<<<<<<<<<<<<
+        
+        EC2InstanceRole = iam.Role(self, "Role",
+            assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
+            managed_policies=[iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore")],
+            description="This is a custom role for assuming SSM role"
+        )
+
+        self.user_data = ec2.UserData.for_linux()
+
+        # Launch Template
+        self.launch_temp = ec2.LaunchTemplate(
+            self, "Launch template",
+            launch_template_name="web_server_template",
+            instance_type=ec2.InstanceType("t2.micro"),
+            key_name="web_KPR",
+            machine_image=ec2.MachineImage.latest_amazon_linux(
+                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2
+            ),
+            role=EC2InstanceRole,
+            user_data=self.user_data,
+            security_group=SG_webserver,
+            block_devices=[
+                ec2.BlockDevice(
+                    device_name="/dev/xvda",
+                    volume=ec2.BlockDeviceVolume.ebs(
+                        volume_size=8,
+                        encrypted=True,
+                        delete_on_termination=True,    
+                    )
+                )
+            ]    
+        )
+        
+        # create and configure the auto scaling group
+        as_group = autoscaling.AutoScalingGroup(
+            self, "Auto_Scaling_Group",
+            vpc=self.vpc_webserver,
+            min_capacity=1,
+            max_capacity=3,
+            vpc_subnets=ec2.SubnetSelection(
+                subnet_type=ec2.SubnetType.PUBLIC
+            ),
+            launch_template=self.launch_temp,
+        )
+        
+        # scaling policy
+        as_group.scale_on_cpu_utilization(
+            "cpu auto scaling",
+            target_utilization_percent=80,
+        )
+        
+        # # SSL Certificate ARN
+        # arn = "arn:aws:acm:eu-central-1:663303000432:certificate/7a324a63-01ba-438c-b7a6-95b6b4e4aecb"
+
+        # # call the certificate itself
+        # certificate = acm.Certificate.from_certificate_arn(self, "SSL Cert", arn)
+        
+        
+        # https_listener = self.elb.add_listener(
+        #     "Listener for HTTPS",
+        #     port=443,
+        #     open=True,
+        #     ssl_policy=elb.SslPolicy.FORWARD_SECRECY_TLS12,
+        #     certificates=[certificate],
+        # )
+
+        # asg_target_group = https_listener.add_targets(
+        #     "ASG webserver",
+        #     port=80,
+        #     targets=[self.as_group],
+        #     health_check=elb.HealthCheck(
+        #         enabled=True,
+        #         port="80",
+        #     ),
+        #     stickiness_cookie_duration=Duration.minutes(5),
+        #     stickiness_cookie_name="pbc",
+        # )
+
+        asg_userdata = as_group.user_data.add_s3_download_command(
+            bucket=Bucket,
+            bucket_key="user_data.sh"
+        )
+
+        # execute the userdata file
+        as_group.user_data.add_execute_file_command(file_path=asg_userdata)
+
+        
+        
          #//////////// EC2 Instance Webserver \\\\\\\\\\\\
+             
+        web_key = KmsWebConstruct(
+            self, 'KMS_web',
+        )
 
         # --- AMI Webserver ---
         web_ami = ec2.MachineImage.latest_amazon_linux(
@@ -223,6 +308,10 @@ class ProjectCloudStack(Stack):
                 ))
             ]
         ) 
+         
+        admin_key = KmsAdminConstruct(
+            self, 'KMS_admin',
+        )
             
         #//////////// SG Managmentserver \\\\\\\\\\\\
             
@@ -244,18 +333,6 @@ class ProjectCloudStack(Stack):
             # ec2.Peer.any_ipv4(),
             ec2.Peer.ipv4(trusted_ip),
             ec2.Port.tcp(22),
-        )
-
-        #HTTP traffic
-        SG_managementserver.add_ingress_rule(
-            ec2.Peer.any_ipv4(),
-            ec2.Port.tcp(80),
-        )
-
-        #HTTPS traffic
-        SG_managementserver.add_ingress_rule(
-            ec2.Peer.any_ipv4(),
-            ec2.Port.tcp(443),
         )
 
          #//////////// EC2 Instance Managementserver \\\\\\\\\\\\
@@ -325,6 +402,10 @@ class ProjectCloudStack(Stack):
         
         
         # >>>>>>>>>>> BACK UP PLAN WEBSERVER <<<<<<<<<<<<<<<
+        
+        vault_key = KmsVaultConstruct(
+            self, 'KMS_vault',
+        )
         
         # Created vault
         self.bckp_vault = backup.BackupVault(

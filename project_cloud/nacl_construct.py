@@ -87,7 +87,8 @@ class NaclConstruct(Construct):
         # NACL inbound SSH webserver
         NACL_webserver.add_entry(
             id = "Web SSH inbound",
-            cidr = ec2.AclCidr.any_ipv4(),
+            # cidr = ec2.AclCidr.any_ipv4(),
+            cidr = ec2.AclCidr.ipv4('10.20.20.0/24'),
             rule_number = 125,
             traffic = ec2.AclTraffic.tcp_port(22),
             direction = ec2.TrafficDirection.INGRESS,
@@ -131,7 +132,7 @@ class NaclConstruct(Construct):
         NACL_man.add_entry(
             id = "Man SSH inbound",
             # cidr = ec2.AclCidr.any_ipv4(),
-            cidr = ec2.AclCidr.ipv4(trusted_ip),
+            cidr = ec2.AclCidr.ipv4('10.10.10.0/24'),
             rule_number = 140,
             traffic = ec2.AclTraffic.tcp_port(22),
             direction = ec2.TrafficDirection.INGRESS,
@@ -141,12 +142,22 @@ class NaclConstruct(Construct):
         # NACL outbound SSH Managementserver
         NACL_man.add_entry(
             id = "Man SSH outbound",
-            cidr = ec2.AclCidr.any_ipv4(),
+            cidr = ec2.AclCidr.ipv4('10.10.10.0/24'),
             rule_number = 140,
             traffic = ec2.AclTraffic.tcp_port(22),
             direction = ec2.TrafficDirection.EGRESS,
             rule_action = ec2.Action.ALLOW,
         ) 
+        
+        NACL_man.add_entry(
+            'SSH inbound allow AdminIP',
+            cidr = ec2.AclCidr.ipv4(trusted_ip),
+            rule_number = 100,
+            traffic = ec2.AclTraffic.tcp_port(22),
+            direction = ec2.TrafficDirection.INGRESS,
+            rule_action = ec2.Action.ALLOW
+
+        )
         
         # NACL inbound Custom TCP Managementserver
         NACL_man.add_entry(
