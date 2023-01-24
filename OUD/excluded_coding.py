@@ -80,3 +80,5 @@
         # )
         
         # role=EC2InstanceRole,
+        
+        # [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")

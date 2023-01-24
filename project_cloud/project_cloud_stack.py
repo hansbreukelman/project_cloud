@@ -6,6 +6,7 @@ from aws_cdk import (
     Stack,
     aws_ec2 as ec2,
     aws_s3 as s3,
+    RemovalPolicy,
     aws_s3_deployment as s3deploy,
     aws_s3_assets as Asset,
     aws_iam as iam,
@@ -28,8 +29,10 @@ class ProjectCloudStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs) 
         
-        #//////////// VPC Webserver \\\\\\\\\\\\
-
+        ################################################
+         #////////////// VPC Webserver \\\\\\\\\\\\\\\\\
+        ################################################
+        
         self.vpc_webserver = ec2.Vpc(
             self, "VPC_1",
             ip_addresses=ec2.IpAddresses.cidr("10.10.10.0/24"),
@@ -45,10 +48,13 @@ class ProjectCloudStack(Stack):
                     cidr_mask=28, 
                     subnet_type=ec2.SubnetType.PUBLIC)
             ]
-        )   
+        ) 
         
+        
+        ################################################
         #//////////// VPC Managementserver \\\\\\\\\\\\
-
+        ################################################
+        
         self.vpc_managementserver = ec2.Vpc(
             self, "VPC_2",
             ip_addresses=ec2.IpAddresses.cidr("10.20.20.0/24"),
@@ -60,20 +66,12 @@ class ProjectCloudStack(Stack):
                     cidr_mask=26, 
                     subnet_type=ec2.SubnetType.PUBLIC),
                 ]
-        )  
-        
-        
-        # #//////////// Key Pairs \\\\\\\\\\\\
-        
-        self.kpr_web = ec2.CfnKeyPair(self, "kpr_web",
-            key_name = "web_KPR",
-        )
-
-        self.kpr_man = ec2.CfnKeyPair(self, "kpr_man",
-            key_name = "man_KPR",
         )
         
+        
+        ################################################
         # #//////////// Peering connection \\\\\\\\\\\\
+        #################################################
             
          #VPC peering connection
         VPC_Peering_connection = ec2.CfnVPCPeeringConnection(
@@ -82,48 +80,45 @@ class ProjectCloudStack(Stack):
             vpc_id=self.vpc_webserver.vpc_id,
         )
         
-        name_count = 0
-
+        man_subnet_count = 0
         #Routing table for the adminserver
         for subnet in self.vpc_managementserver.public_subnets:
-            name_count += 1
+            man_subnet_count += 1
             ec2.CfnRoute(
-                self, 'Management Route Table' + str(name_count),
+                self, 'Management Route Table' + str(man_subnet_count),
                 route_table_id=subnet.route_table.route_table_id,
                 destination_cidr_block="10.10.10.0/24", 
-                vpc_peering_connection_id=VPC_Peering_connection.ref,
-        )
+                vpc_peering_connection_id=VPC_Peering_connection.attr_id)
+
+        web_subnet_count = 0
+        for web_subnet in self.vpc_webserver.private_subnets:  
+            web_subnet_count += 1      
+            ec2.CfnRoute(self, "Web Private Subnet Route Table" + str(web_subnet_count),
+                route_table_id = web_subnet.route_table.route_table_id,
+                destination_cidr_block = "10.20.20.0/24",
+                vpc_peering_connection_id = VPC_Peering_connection.attr_id)
         
-        #Routing table for the webserver
-        for subnet in self.vpc_webserver.public_subnets:
-            name_count += 1
-            ec2.CfnRoute(
-                self, 'Web Public Route Table' + str(name_count),
-                route_table_id=subnet.route_table.route_table_id,
-                destination_cidr_block="10.20.20.0/24", 
-                vpc_peering_connection_id=VPC_Peering_connection.ref,
-        )
+        # #Routing table for the webserver
+        # for subnet in self.vpc_webserver.public_subnets:
+        #     name_count += 1
+        #     ec2.CfnRoute(
+        #         self, 'Web Public Route Table' + str(name_count),
+        #         route_table_id=subnet.route_table.route_table_id,
+        #         destination_cidr_block="10.20.20.0/24", 
+        #         vpc_peering_connection_id=VPC_Peering_connection.ref,)
             
-        for subnet in self.vpc_webserver.private_subnets:
-            name_count += 1
-            ec2.CfnRoute(
-                self, 'Web Private Subnet Route Table' + str(name_count),
-                route_table_id = subnet.route_table.route_table_id,
-                destination_cidr_block = "10.20.20.0/24", 
-                vpc_peering_connection_id = VPC_Peering_connection.ref,
-        )
             
-        
-        # #//////////// NetworkACL \\\\\\\\\\\\
-            
-        self.networkacl = NaclConstruct(
+        #NetworkACL
+        networkacl = NaclConstruct(
             self, 'Network ACL',
             vpc_webserver = self.vpc_webserver,
             vpc_managementserver = self.vpc_managementserver,
-        )
-        
-        #//////////// SG Webserver \\\\\\\\\\\\
+        )  
+            
 
+        #//////////// SecurityGroups \\\\\\\\\\\\
+        
+        # SecurityGroup Webserver
         SG_webserver = ec2.SecurityGroup(self, "SGwebserver",
             vpc = self.vpc_webserver,
             security_group_name = "SGWebServer",
@@ -132,25 +127,54 @@ class ProjectCloudStack(Stack):
 
         #HTTP traffic
         SG_webserver.add_ingress_rule(
-            ec2.Peer.any_ipv4(),
+            ec2.Peer.ipv4("10.10.10.0/24"),
             ec2.Port.tcp(80),
         )
 
         #HTTPS traffic
         SG_webserver.add_ingress_rule(
-            ec2.Peer.any_ipv4(),
+            ec2.Peer.ipv4("10.10.10.0/24"),
             ec2.Port.tcp(443),
         )
 
         # SSH from the admin server.
         SG_webserver.add_ingress_rule(
-            ec2.Peer.any_ipv4(),
+            ec2.Peer.ipv4("10.10.10.0/24"),
             ec2.Port.tcp(22)
-        ) 
+        )
+        
+        # SecurityGroup Managmentserver
+        SG_managementserver = ec2.SecurityGroup(self, "SGmanagementserver",
+            vpc = self.vpc_managementserver,
+            security_group_name = "SGManServer",
+            allow_all_outbound = True,
+        )
+        
+        #RDP traffic
+        SG_managementserver.add_ingress_rule(
+            # ec2.Peer.any_ipv4(),
+            ec2.Peer.ipv4(trusted_ip),
+            ec2.Port.tcp(3389),
+        )
+            
+        #SSH traffic
+        SG_managementserver.add_ingress_rule(
+            # ec2.Peer.any_ipv4(),
+            ec2.Peer.ipv4(trusted_ip),
+            ec2.Port.tcp(22),
+        )
+        
+        # #//////////// Key Pair \\\\\\\\\\\\\
+        
+        self.kpr_project_cloud = ec2.CfnKeyPair(self, "kpr_project_cloud",
+            key_name = "project_cloud_KPR",
+        )
+        
 
-
-        #//////////// S3 User Bucket \\\\\\\\\\\\
-
+        ##################################################
+        # /////////////// S3 User Bucket \\\\\\\\\\\\\\\\
+        ##################################################
+        
         Bucket = s3.Bucket(
             self, "userdata_client_test", 
             bucket_name = "bucket-for-userdata", 
@@ -162,12 +186,15 @@ class ProjectCloudStack(Stack):
         
         self.user_data_upload = s3deploy.BucketDeployment(
             self, "DeployWebsite",
-            sources = [s3deploy.Source.asset("/Users/hansbreukelman/project_cloud/user_data")],
+            sources = [s3deploy.Source.asset("./project_cloud")],  
             destination_bucket = Bucket,
         )
-
+        
+        
+        ##################################################
          #//////////// EC2 Instance Webserver \\\\\\\\\\\\
-             
+        ###################################################     
+        
         web_key = KmsWebConstruct(
             self, 'KMS_web',
         )
@@ -193,7 +220,6 @@ class ProjectCloudStack(Stack):
         userdata_webserver.add_s3_download_command(
             bucket = Bucket,
             bucket_key = "index.html",
-            #local_file = "/tmp/index.html",
             local_file = "/var/www/html/",
         )
 
@@ -207,7 +233,7 @@ class ProjectCloudStack(Stack):
             machine_image = web_ami,
             vpc = self.vpc_webserver,
             security_group = SG_webserver,
-            key_name = 'web_KPR', 
+            key_name = 'project_cloud_KPR', 
             user_data = userdata_webserver,
             block_devices = [ec2.BlockDevice(
                 device_name = "/dev/xvda",
@@ -219,35 +245,16 @@ class ProjectCloudStack(Stack):
                 ))
             ]
         ) 
-         
+            
+        
+        #########################################################
+         #//////////// EC2 Instance Managementserver \\\\\\\\\\\\
+        #########################################################
+        
         admin_key = KmsAdminConstruct(
             self, 'KMS_admin',
         )
-            
-        #//////////// SG Managmentserver \\\\\\\\\\\\
-            
-        SG_managementserver = ec2.SecurityGroup(self, "SGmanagementserver",
-            vpc = self.vpc_managementserver,
-            security_group_name = "SGManServer",
-            allow_all_outbound = True,
-        )
         
-        #RDP traffic
-        SG_managementserver.add_ingress_rule(
-            # ec2.Peer.any_ipv4(),
-            ec2.Peer.ipv4(trusted_ip),
-            ec2.Port.tcp(3389),
-        )
-            
-        #SSH traffic
-        SG_managementserver.add_ingress_rule(
-            # ec2.Peer.any_ipv4(),
-            ec2.Peer.ipv4(trusted_ip),
-            ec2.Port.tcp(22),
-        )
-
-         #//////////// EC2 Instance Managementserver \\\\\\\\\\\\
-
         # ------ AMI Management Server -------
         man_ami = ec2.WindowsImage(
             ec2.WindowsVersion.WINDOWS_SERVER_2022_ENGLISH_FULL_BASE,
@@ -257,20 +264,17 @@ class ProjectCloudStack(Stack):
         userdata_manserver = ec2.UserData.for_windows()
         file_script_path_man = userdata_manserver.add_s3_download_command(
             bucket = Bucket,
-            bucket_key = "user_data_man.ps1",            
-        )
+            bucket_key = "user_data_man.ps1")
         
         userdata_manserver.add_execute_file_command(file_path = file_script_path_man) 
+        userdata_manserver.add_execute_file_command(file_path = "./Users/Administrator/")
         
         #This is where the index page is downloaded.
         userdata_manserver.add_s3_download_command(
             bucket = Bucket,
-            bucket_key = "web_KPR.pem",
-            #local_file = "/tmp/index.html",
+            bucket_key = "project_cloud_KPR.pem",
             local_file = "./Users/Administrator/",
         )
-
-        userdata_manserver.add_execute_file_command(file_path = "./Users/Administrator/")
 
         # EC2 Admin / Management Server
         instance_managementserver = ec2.Instance(
@@ -279,7 +283,7 @@ class ProjectCloudStack(Stack):
             machine_image = man_ami,
             vpc = self.vpc_managementserver,
             security_group = SG_managementserver,
-            key_name = 'man_KPR',
+            key_name = 'project_cloud_KPR',
             user_data = userdata_manserver,
             block_devices = [ec2.BlockDevice(
                 device_name = "/dev/sda1",
@@ -291,6 +295,11 @@ class ProjectCloudStack(Stack):
                 )
             )]
         )
+        
+        instance_managementserver.user_data.add_commands("<powershell>",
+            "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0",
+            "Start-Service ssh-agent",
+            "Start-Service sshd")
 
         userdata_manserver = ec2.CloudFormationInit.from_elements(
             ec2.InitCommand.argv_command([
@@ -300,16 +309,16 @@ class ProjectCloudStack(Stack):
                 ]),
             )
 
-        #This is where I set a permission to allow the webserver to read my s3 Bucket.
+        #This is where I set a permission to allow the servers to read my s3 Bucket.
         Bucket.grant_read(instance_webserver)
-        
         Bucket.grant_read(instance_managementserver)
         
+        # Bucket.grant_read()
+        
         #Only direct SSH connections to the admin server is allowed.
-        SG_webserver.connections.allow_from(
-            other = instance_managementserver,
-            port_range = ec2.Port.tcp(22),
-        )
+        # SG_webserver.connections.allow_from(instance_managementserver,
+        #     port_range = ec2.Port.tcp(22),
+        # )
         
          # >>>>>> LOAD BALANCER <<<<<<<
         
@@ -324,17 +333,18 @@ class ProjectCloudStack(Stack):
         
         # >>>>>>>>>>>> Auto Scaling <<<<<<<<<<<<<<
 
-        self.user_data = ec2.UserData.for_linux()
-
         # Launch Template
         self.launch_temp = ec2.LaunchTemplate(
             self, "Launch template",
             launch_template_name="web_server_template",
             instance_type=ec2.InstanceType("t2.micro"),
-            key_name="web_KPR",
             machine_image=ec2.MachineImage.latest_amazon_linux(
                 generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2),
-            user_data=self.user_data,
+            key_name="project_cloud_KPR",
+            role = iam.Role(
+                self, "role", 
+                assumed_by= iam.ServicePrincipal("ec2.amazonaws.com")),
+            user_data = ec2.UserData.for_linux(),
             security_group=SG_webserver,
             block_devices=[
                 ec2.BlockDevice(
@@ -345,8 +355,12 @@ class ProjectCloudStack(Stack):
                         delete_on_termination=True,    
                     )
                 )
-            ]    
+            ]
         )
+        
+        # ud_policy = ud_bucket.grant_read(launchTemp.role)
+        # ud_path = launchTemp.user_data.add_s3_download_command(bucket = ud_bucket, bucket_key = "user_data.sh")
+        # ud_exe = launchTemp.user_data.add_execute_file_command(file_path = ud_path)
         
         # create and configure the auto scaling group
         as_group = autoscaling.AutoScalingGroup(

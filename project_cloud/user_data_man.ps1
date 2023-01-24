@@ -28,6 +28,6 @@ Start-Sleep 1
 Start-Sleep 1
 [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
 
-$keypairid = Start-Process aws ec2 describe-key-pairs --filters Name=key-name,Values=project_cloud_KPR --query KeyPairs[*].KeyPairId --output text
+Start-Process $keypairid = Start-Process aws ec2 describe-key-pairs --filters Name=key-name,Values=project_cloud_KPR --query KeyPairs[*].KeyPairId --output text
 
 Start-Process aws ssm get-parameter --name /ec2/keypair/$keypair --with-decryption --query Parameter.Value --output text > project_cloud_KPR.pem
