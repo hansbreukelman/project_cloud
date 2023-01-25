@@ -20,7 +20,6 @@ class NaclConstruct(Construct):
             self, "NACL_Web_Public", 
             vpc = vpc_webserver,
             subnet_selection = ec2.SubnetSelection(
-                availability_zones = ["eu-central-1a", "eu-central-1b", "eu-central-1c"],
                 subnet_type = ec2.SubnetType.PUBLIC))
         
         # NACL inbound/outbound HTTP webserver
@@ -141,8 +140,7 @@ class NaclConstruct(Construct):
             self, "NACL_Web_Private", 
             vpc = vpc_webserver,
             subnet_selection = ec2.SubnetSelection(
-                availability_zones = ["eu-central-1a", "eu-central-1b", "eu-central-1c"],
-                subnet_type = ec2.SubnetType.PRIVATE_WITH_EGRESS))
+                subnet_type=ec2.SubnetType.PRIVATE_ISOLATED))
         
         #Inbound/outbound HTTP rule for the private webserver NACL.
         NACL_Ws_Private.add_entry(

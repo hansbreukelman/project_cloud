@@ -1,5 +1,5 @@
-from .nacl_construct import NaclConstruct
-from .kms_construct import KmsAdminConstruct, KmsWebConstruct, KmsVaultConstruct
+from project_cloud.nacl_construct import NaclConstruct
+from project_cloud.kms_construct import KmsAdminConstruct, KmsWebConstruct, KmsVaultConstruct
 from aws_cdk import (
     RemovalPolicy,
     Duration,
@@ -37,16 +37,16 @@ class ProjectCloudStack(Stack):
             self, "VPC_1",
             ip_addresses=ec2.IpAddresses.cidr("10.10.10.0/24"),
             nat_gateways = 1,
-            availability_zones = ["eu-central-1a", "eu-central-1b", "eu-central-1c"],
+            max_azs=3,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
-                    name="private_web", 
-                    cidr_mask=26, 
-                    subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+                    name = "public_web",
+                    cidr_mask = 26,
+                    subnet_type = ec2.SubnetType.PUBLIC),
                 ec2.SubnetConfiguration(
-                    name="public_web", 
-                    cidr_mask=28, 
-                    subnet_type=ec2.SubnetType.PUBLIC)
+                    name = "private_web", 
+                    cidr_mask = 26, 
+                    subnet_type = ec2.SubnetType.PRIVATE_WITH_EGRESS),
             ]
         ) 
         
@@ -58,7 +58,6 @@ class ProjectCloudStack(Stack):
         self.vpc_managementserver = ec2.Vpc(
             self, "VPC_2",
             ip_addresses=ec2.IpAddresses.cidr("10.20.20.0/24"),
-            nat_gateways=0,
             availability_zones=['eu-central-1b'],
             subnet_configuration=[
                 ec2.SubnetConfiguration(
@@ -82,34 +81,24 @@ class ProjectCloudStack(Stack):
         
         man_subnet_count = 0
         #Routing table for the adminserver
-        for subnet in self.vpc_managementserver.public_subnets:
+        for subnet in self.vpc_webserver.public_subnets:
             man_subnet_count += 1
             ec2.CfnRoute(
                 self, 'Management Route Table' + str(man_subnet_count),
-                route_table_id=subnet.route_table.route_table_id,
-                destination_cidr_block="10.10.10.0/24", 
-                vpc_peering_connection_id=VPC_Peering_connection.attr_id)
+                route_table_id = subnet.route_table.route_table_id,
+                destination_cidr_block = "10.20.20.0/24", 
+                vpc_peering_connection_id = VPC_Peering_connection.ref,)
 
-        web_subnet_count = 0
-        for web_subnet in self.vpc_webserver.private_subnets:  
+        web_subnet_count = 0    
+        for web_subnet in self.vpc_managementserver.public_subnets:  
             web_subnet_count += 1      
             ec2.CfnRoute(self, "Web Private Subnet Route Table" + str(web_subnet_count),
                 route_table_id = web_subnet.route_table.route_table_id,
-                destination_cidr_block = "10.20.20.0/24",
-                vpc_peering_connection_id = VPC_Peering_connection.attr_id)
-        
-        # #Routing table for the webserver
-        # for subnet in self.vpc_webserver.public_subnets:
-        #     name_count += 1
-        #     ec2.CfnRoute(
-        #         self, 'Web Public Route Table' + str(name_count),
-        #         route_table_id=subnet.route_table.route_table_id,
-        #         destination_cidr_block="10.20.20.0/24", 
-        #         vpc_peering_connection_id=VPC_Peering_connection.ref,)
-            
-            
+                destination_cidr_block = "10.10.10.0/24",
+                vpc_peering_connection_id = VPC_Peering_connection.ref,)
+    
         #NetworkACL
-        networkacl = NaclConstruct(
+        self.networkacl = NaclConstruct(
             self, 'Network ACL',
             vpc_webserver = self.vpc_webserver,
             vpc_managementserver = self.vpc_managementserver,
