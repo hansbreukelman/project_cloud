@@ -1,4 +1,5 @@
 from aws_cdk import (
+    Duration,
     aws_kms as kms,
     RemovalPolicy,
 )
@@ -15,6 +16,7 @@ class KmsAdminConstruct(Construct):
         admin_key = kms.Key(self, "Admin Key",
             enable_key_rotation = True,
             alias = "AdminKey",
+            pending_window=Duration.days(10),
             removal_policy = RemovalPolicy.DESTROY)
         self.adminkms_key = admin_key
         
@@ -29,7 +31,6 @@ class KmsWebConstruct(Construct):
             removal_policy = RemovalPolicy.DESTROY)
         self.webkms_key = web_key
 
-
 class KmsVaultConstruct(Construct):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
@@ -38,5 +39,7 @@ class KmsVaultConstruct(Construct):
         vault_key = kms.Key(self, "Vault Key",
             enable_key_rotation = True,
             alias = "VaultKMS_key",
+            pending_window=Duration.days(10),
             removal_policy = RemovalPolicy.DESTROY)
         self.vaultkms_key = vault_key
+    

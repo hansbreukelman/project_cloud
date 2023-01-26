@@ -1,4 +1,11 @@
-<!DOCTYPE html>
+#!/bin/bash
+
+sudo yum update -y
+sudo yum install -y httpd
+sudo systemctl enable httpd
+sudo systemctl start httpd
+
+sudo echo "<!DOCTYPE html>
 <html>
 <head>
 
@@ -78,5 +85,4 @@ body {
 
 
 </body>
-</html>
-
+</html>" > /var/www/html/index.html
