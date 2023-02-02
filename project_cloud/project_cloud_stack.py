@@ -17,8 +17,6 @@ from aws_cdk import (
     aws_kms as kms,
 )
 
-import boto3
-
 from constructs import Construct
 
 from requests import get
@@ -77,8 +75,8 @@ class ProjectCloudStack(Stack):
         vpc_managementserver = ec2.Vpc( self, "VPC_2",
             ip_addresses=ec2.IpAddresses.cidr("10.20.20.0/24"),
             vpc_name = "vpc_managementserver",
-            nat_gateways = 0,
-            availability_zones = ["eu-central-1a", "eu-central-1b"],
+            max_azs=2,
+            nat_gateways=0,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
                     name="public_man", 
@@ -489,11 +487,11 @@ class ProjectCloudStack(Stack):
             "Start-Service ssh-agent",
             "Start-Service sshd")
 
-        userdata_manserver = ec2.CloudFormationInit.from_elements(
-            ec2.InitCommand.argv_command([
-                'powershell.exe',
-                '-command',
-                'Set-ExecutionPolicy RemoteSigned -Force']),)
+        # userdata_manserver = ec2.CloudFormationInit.from_elements(
+        #     ec2.InitCommand.argv_command([
+        #         'powershell.exe',
+        #         '-command',
+        #         'Set-ExecutionPolicy RemoteSigned -Force']),)
         
         
          ##################################################
@@ -508,22 +506,32 @@ class ProjectCloudStack(Stack):
             storage = ec2.AmazonLinuxStorage.GENERAL_PURPOSE,)
         
         #This is where the user data for the webserver is downloaded.
+       
+        # file_script_path = userdata_webserver.add_s3_download_command(
+        #     bucket = Bucket,
+        #     bucket_key = "user_data.sh",)
+
+        # userdata_webserver.add_execute_file_command(file_path = file_script_path) 
+
+        # #This is where the index page is downloaded.
+        # userdata_webserver.add_s3_download_command(
+        #     bucket = Bucket,
+        #     bucket_key = "index.html",
+        #     local_file = "/var/www/html/",)
+
+        # userdata_webserver.add_commands("chmod 755 -R /var/www/html/")
+
+        # userdata_webserver.add_execute_file_command(file_path = "/var/www/html/")
+        
+        
+        
         userdata_webserver = ec2.UserData.for_linux()
         file_script_path = userdata_webserver.add_s3_download_command(
-            bucket = Bucket,
-            bucket_key = "user_data.sh",)
+            bucket=Bucket,
+            bucket_key="user_data.sh",
+        )
 
-        userdata_webserver.add_execute_file_command(file_path = file_script_path) 
-
-        #This is where the index page is downloaded.
-        userdata_webserver.add_s3_download_command(
-            bucket = Bucket,
-            bucket_key = "index.html",
-            local_file = "/var/www/html/",)
-
-        userdata_webserver.add_commands("chmod 755 -R /var/www/html/")
-
-        userdata_webserver.add_execute_file_command(file_path = "/var/www/html/")
+        userdata_webserver.add_execute_file_command(file_path=file_script_path)
 
         instance_webserver = ec2.Instance(
             self, 'webserver',
@@ -549,78 +557,78 @@ class ProjectCloudStack(Stack):
         ##################################################
         
         #User data webserver
-        userdata_webserver = ec2.UserData.for_linux()
+        # userdata_webserver = ec2.UserData.for_linux()
         
         
-        #  #//////////// EC2 Instance Launch Template \\\\\\\\\\\\ 
+        # #  #//////////// EC2 Instance Launch Template \\\\\\\\\\\\ 
         
-        launchtemplaterole = iam.Role(self, "Launch Template Role",
-            assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),)
+        # launchtemplaterole = iam.Role(self, "Launch Template Role",
+        #     assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),)
 
-        self.launch_template = ec2.LaunchTemplate(self, "launchTemplate",
-            launch_template_name="web_server_template",
-            instance_type=ec2.InstanceType("t3.nano"),
-            machine_image=ec2.MachineImage.latest_amazon_linux(
-                generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2),
-            security_group = SG_webserver,
-            key_name = "KPR_Project_Cloud",
-            role = launchtemplaterole,
-            user_data = userdata_webserver,
-            block_devices = [ec2.BlockDevice(
-                device_name = "/dev/xvda",
-                volume = ec2.BlockDeviceVolume.ebs(
-                    volume_size = 8,
-                    encrypted = True,
-                    delete_on_termination = True,
-                    kms_key = web_key,
-                    )
-                )
-            ],
-        )
+        # self.launch_template = ec2.LaunchTemplate(self, "launchTemplate",
+        #     launch_template_name="web_server_template",
+        #     instance_type=ec2.InstanceType("t3.nano"),
+        #     machine_image=ec2.MachineImage.latest_amazon_linux(
+        #         generation=ec2.AmazonLinuxGeneration.AMAZON_LINUX_2),
+        #     security_group = SG_webserver,
+        #     key_name = "KPR_Project_Cloud",
+        #     role = launchtemplaterole,
+        #     user_data = userdata_webserver,
+        #     block_devices = [ec2.BlockDevice(
+        #         device_name = "/dev/xvda",
+        #         volume = ec2.BlockDeviceVolume.ebs(
+        #             volume_size = 8,
+        #             encrypted = True,
+        #             delete_on_termination = True,
+        #             kms_key = web_key,
+        #             )
+        #         )
+        #     ],
+        # )
         
-        # create and configure the auto scaling group
-        self.as_group = autoscaling.AutoScalingGroup(
-            self, "Auto Scaling_Group",
-            vpc=vpc_webserver,
-            vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
-            launch_template=self.launch_template,
-            min_capacity=1,
-            max_capacity=3,)
+        # # create and configure the auto scaling group
+        # self.as_group = autoscaling.AutoScalingGroup(
+        #     self, "Auto Scaling_Group",
+        #     vpc=vpc_webserver,
+        #     vpc_subnets=ec2.SubnetSelection(
+        #         subnet_type=ec2.SubnetType.PRIVATE_WITH_EGRESS),
+        #     launch_template=self.launch_template,
+        #     min_capacity=1,
+        #     max_capacity=3,)
         
-        self.as_group.scale_on_cpu_utilization(
-            "cpu auto scaling",
-            target_utilization_percent=80,)
+        # self.as_group.scale_on_cpu_utilization(
+        #     "cpu auto scaling",
+        #     target_utilization_percent=80,)
         
-        self.elb = elb.ApplicationLoadBalancer(
-            self, "Application Load Balancer",
-            vpc=vpc_webserver,
-            internet_facing=True,
-            security_group = SG_webserver,)
+        # self.elb = elb.ApplicationLoadBalancer(
+        #     self, "Application Load Balancer",
+        #     vpc=vpc_webserver,
+        #     security_group = SG_webserver,
+        #     internet_facing=True,)
         
-        http_listener = self.elb.add_listener(
-            "HTTP listener",
-            port=80,
-            open=True,)
+        # http_listener = self.elb.add_listener(
+        #     "HTTP listener",
+        #     port=80,
+        #     open=True,)
         
-        self.web_target_group = http_listener.add_targets(
-            "ASG webserver",
-            port=80,
-            targets=[self.as_group],
-            health_check=elb.HealthCheck(
-                enabled=True,),)
+        # web_target_group = http_listener.add_targets(
+        #     "ASG webserver",
+        #     port=80,
+        #     targets=[self.as_group],
+        #     health_check=elb.HealthCheck(
+        #         enabled=True,),)
         
         # S3 Read Perms
 
-        Bucket.grant_read(launchtemplaterole)
+        # Bucket.grant_read(launchtemplaterole)
         Bucket.grant_read(instance_webserver)
         Bucket.grant_read(instance_managementserver)
 
-        file_script_path = self.launch_template.user_data.add_s3_download_command(
-            bucket=Bucket,
-            bucket_key="user_data.sh",)
+        # file_script_path = self.launch_template.user_data.add_s3_download_command(
+        #     bucket=Bucket,
+        #     bucket_key="user_data.sh",)
 
-        self.launch_template.user_data.add_execute_file_command(file_path=file_script_path)
+        # self.launch_template.user_data.add_execute_file_command(file_path=file_script_path)
         
         #         # Only direct SSH connections to the admin server is allowed.
         # SG_webserver.connections.allow_from(instance_managementserver,
